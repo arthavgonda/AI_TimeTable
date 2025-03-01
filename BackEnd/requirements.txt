@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+sqlalchemy
+numpy
+twilio
+firebase-admin
