@@ -1,0 +1,74 @@
+import random
+import numpy as np
+from deap import base, creator, tools
+
+# Constraints (Professors availability: Each professor can take a max of 2 classes)
+professor_availability = {prof: 5 for prof in professors}
+
+# Genetic Algorithm Setup
+creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+creator.create("Individual", list, fitness=creator.FitnessMin)
+
+toolbox = base.Toolbox()
+toolbox.register("course", random.choice, courses)
+toolbox.register("professor", random.choice, professors)
+toolbox.register("room", random.choice, rooms)
+toolbox.register("time_slot", random.choice, time_slots)
+
+def create_individual():
+    return [(toolbox.course(), toolbox.professor(), toolbox.room(), toolbox.time_slot()) for _ in range(5)]
+
+toolbox.register("individual", tools.initIterate, creator.Individual, create_individual)
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+
+def fitness(individual):
+    professor_count = {prof: 0 for prof in professors}
+    schedule = set()
+    conflicts = 0
+
+    for course, professor, room, time_slot in individual:
+        if (room, time_slot) in schedule:
+            conflicts += 1
+        schedule.add((room, time_slot))
+
+        professor_count[professor] += 1
+        if professor_count[professor] > professor_availability[professor]:
+            conflicts += 1
+
+    return (conflicts,)
+
+toolbox.register("evaluate", fitness)
+toolbox.register("mate", tools.cxTwoPoint)
+toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.2)
+toolbox.register("select", tools.selTournament, tournsize=3)
+
+def main():
+    population = toolbox.population(n=50)
+    generations = 100
+
+    for gen in range(generations):
+        offspring = list(map(toolbox.clone, toolbox.select(population, len(population))))
+        for child1, child2 in zip(offspring[::2], offspring[1::2]):
+            if random.random() < 0.5:
+                toolbox.mate(child1, child2)
+                del child1.fitness.values, child2.fitness.values
+        
+        for mutant in offspring:
+            if random.random() < 0.2:
+                toolbox.mutate(mutant)
+                del mutant.fitness.values
+
+        invalid_individuals = [ind for ind in offspring if not ind.fitness.valid]
+        fitness_values = map(toolbox.evaluate, invalid_individuals)
+        for ind, fit in zip(invalid_individuals, fitness_values):
+            ind.fitness.values = fit
+
+        population[:] = offspring
+
+    best_schedule = tools.selBest(population, 1)[0]
+    print("\nOptimized Timetable:")
+    for course, professor, room, time_slot in best_schedule:
+        print(f"{course} - {professor} - {room} - {time_slot}")
+
+if __name__ == "__main__":
+    main()
