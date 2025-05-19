@@ -69,7 +69,7 @@ function Home() {
       align="center"
       sx={{ color: "#757575", marginTop: 4 }}
     >
-      Welcome bkl! Choose krr.
+      Welcome! Please Choose a roLE.
     </Typography>
   );
 }
