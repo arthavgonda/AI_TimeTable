@@ -54,11 +54,17 @@ else:
               epochs=10, batch_size=32, verbose=1)
     model.save(model_path)
 
-def check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=None, teacher_lecture_limits=None):
+def check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=None, teacher_lecture_limits=None, teacher_availability=None):
     if teacher_subject_sections is None:
         teacher_subject_sections = {}
     if teacher_lecture_limits is None:
         teacher_lecture_limits = {}
+    if teacher_availability is None:
+        teacher_availability = {}
+    
+    if teacher in teacher_availability and not teacher_availability.get(teacher, True):
+        return False
+    
     slot_index = data["time_slots"].index(time_slot)
     if section not in timetable or day not in timetable[section]:
         return True
@@ -96,13 +102,16 @@ def check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is
                                 return False
     return True
 
-def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_sections_taught=None, teacher_lecture_limits=None):
+def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_sections_taught=None, teacher_lecture_limits=None, teacher_availability=None):
     if not teacher_subject_sections:
         teacher_subject_sections = {}
     if not teacher_sections_taught:
         teacher_sections_taught = {}
     if not teacher_lecture_limits:
         teacher_lecture_limits = {}
+    if not teacher_availability:
+        teacher_availability = {teacher: True for teacher in data["teachers"]}
+    
     timetable = {}
     if start_date:
         start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -118,7 +127,7 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
     
     elective_slots = ["11:00-12:00", "12:00-13:00"]
     lunch_slot = "13:00-14:00"
-    elective_day = random.choice(days)
+    elective_days = random.sample(days, 2)
     lab_subjects = ["PCS-408", "PCS-403", "PCS-409"]
     core_subjects_all = ["TCS-408", "TCS-402", "TCS-403", "TCS-409", "XCS-401", "TOC-401"]
     exclusive_subjects = {
@@ -129,88 +138,151 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
         "Cyber": ["NDE"],
         "AI": ["AI900"]
     }
+    
+    morning_slots = ["8:00-9:00", "9:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00"]
+    afternoon_slots = ["14:00-15:00", "15:00-16:00"]
+    lunch_slot = "13:00-14:00"
 
     for section in data["sections"]:
         timetable[section] = {day: {} for day in days}
 
     for section in data["sections"]:
-        available_teachers = [t for t, avail in teacher_availability.items() if avail]
-        valid_teachers = [t for t in subject_teacher_mapping["Elective"] if t in available_teachers]
-        if valid_teachers:
-            teacher = random.choice(valid_teachers)
-            if check_slot_conflict(timetable, section, elective_day, elective_slots[0], teacher, subject="Elective", is_two_hour=True, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits):
-                timetable[section][elective_day][elective_slots[0]] = {"subject": "Elective", "teacher": "respective teacher"}
-                timetable[section][elective_day][elective_slots[1]] = {"subject": "Elective", "teacher": "respective teacher"}
+        for elective_day in elective_days:
+            available_teachers = [t for t in subject_teacher_mapping["Elective"] if teacher_availability.get(t, True)]
+            if available_teachers:
+                teacher = random.choice(available_teachers)
+                if check_slot_conflict(timetable, section, elective_day, elective_slots[0], teacher, subject="Elective", is_two_hour=True, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability):
+                    timetable[section][elective_day][elective_slots[0]] = {"subject": "Elective", "teacher": "respective teacher"}
+                    timetable[section][elective_day][elective_slots[1]] = {"subject": "Elective", "teacher": "respective teacher"}
 
-    teacher_lecture_count = {t: 0 for t in data["teachers"]}  
+    teacher_lecture_count = {t: 0 for t in data["teachers"]}
+    
     for section in data["sections"]:
-        base_subjects = core_subjects_all + lab_subjects
+        base_subjects = core_subjects_all.copy()
         core_pool = base_subjects + (exclusive_subjects.get(section, []))
-        labs_to_schedule = [s for s in lab_subjects if s in core_pool]
-        labs_assigned = []
-
+        
+        lab_occurrences = {lab: 0 for lab in lab_subjects}
+        
+        for lab_subject in lab_subjects:
+            occurrences_scheduled = 0
+            attempts = 0
+            
+            while occurrences_scheduled < 2 and attempts < 50:
+                attempts += 1
+                day = random.choice(days)
+                
+                for time_slot in morning_slots:
+                    if day in elective_days and time_slot in elective_slots:
+                        continue
+                        
+                    slot_index = data["time_slots"].index(time_slot)
+                    if slot_index + 1 < len(data["time_slots"]):
+                        next_slot = data["time_slots"][slot_index + 1]
+                        
+                        if (time_slot not in timetable[section][day] and 
+                            next_slot not in timetable[section][day] and
+                            next_slot in morning_slots):
+                            
+                            valid_teachers = [
+                                t for t in subject_teacher_mapping[lab_subject] 
+                                if teacher_availability.get(t, True)
+                                and t in teacher_subject_sections 
+                                and lab_subject in teacher_subject_sections[t] 
+                                and section in teacher_subject_sections[t][lab_subject]
+                                and (teacher_lecture_count.get(t, 0) + 2) <= (teacher_lecture_limits.get(t, float('inf')))
+                            ]
+                            
+                            if valid_teachers:
+                                teacher = random.choice(valid_teachers)
+                                if check_slot_conflict(timetable, section, day, time_slot, teacher, lab_subject, is_two_hour=True, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability):
+                                    timetable[section][day][time_slot] = {"subject": lab_subject, "teacher": teacher}
+                                    timetable[section][day][next_slot] = {"subject": lab_subject, "teacher": teacher}
+                                    occurrences_scheduled += 1
+                                    lab_occurrences[lab_subject] += 1
+                                    teacher_lecture_count[teacher] += 2
+                                    if teacher not in teacher_sections_taught:
+                                        teacher_sections_taught[teacher] = []
+                                    if section not in teacher_sections_taught[teacher]:
+                                        teacher_sections_taught[teacher].append(section)
+                                    break
+                
+                if occurrences_scheduled >= 2:
+                    break
+        
         for day in days:
-            time_slots = data["time_slots"]
-            for time_slot in time_slots:
-                if time_slot == lunch_slot:
-                    timetable[section][day][time_slot] = {"subject": "Lunch", "teacher": None}
+            for time_slot in morning_slots:
+                if day in elective_days and time_slot in elective_slots:
                     continue
-
-                if day == elective_day and time_slot in elective_slots:
+                
+                if time_slot in timetable[section][day]:
                     continue
-
-                available_teachers = [t for t, avail in teacher_availability.items() if avail]
-                scheduled = False
-
-                if labs_to_schedule and random.random() < 0.3:  
-                    subject = random.choice(labs_to_schedule)
-                    is_lab = True
-                    next_slot = data["time_slots"][data["time_slots"].index(time_slot) + 1] if time_slot != "15:00-16:00" else None
+                
+                theory_subjects = [s for s in core_pool if not s.startswith("PCS")]
+                if theory_subjects:
+                    subject = random.choice(theory_subjects)
+                    
                     valid_teachers = [
                         t for t in subject_teacher_mapping[subject] 
-                        if t in available_teachers 
-                        and t in teacher_subject_sections 
-                        and subject in teacher_subject_sections[t] 
-                        and section in teacher_subject_sections[t][subject]
-                        and (teacher_lecture_count.get(t, 0) + 2) <= (teacher_lecture_limits.get(t, float('inf')))
-                    ]
-                    if valid_teachers and next_slot:
-                        teacher = random.choice(valid_teachers)
-                        if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=True, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits):
-                            timetable[section][day][time_slot] = {"subject": subject, "teacher": teacher}
-                            timetable[section][day][next_slot] = {"subject": subject, "teacher": teacher}
-                            labs_to_schedule.remove(subject)
-                            labs_assigned.append(subject)
-                            teacher_lecture_count[teacher] += 2
-                            if teacher not in teacher_sections_taught:
-                                teacher_sections_taught[teacher] = []
-                            if section not in teacher_sections_taught[teacher]:
-                                teacher_sections_taught[teacher].append(section)
-                            scheduled = True
-
-                if not scheduled:
-                    subject = random.choice(core_pool)
-                    is_lab = False
-                    valid_teachers = [
-                        t for t in subject_teacher_mapping[subject] 
-                        if t in available_teachers 
+                        if teacher_availability.get(t, True)
                         and t in teacher_subject_sections 
                         and subject in teacher_subject_sections[t] 
                         and section in teacher_subject_sections[t][subject]
                         and (teacher_lecture_count.get(t, 0) + 1) <= (teacher_lecture_limits.get(t, float('inf')))
                     ]
+                    
                     if valid_teachers:
                         teacher = random.choice(valid_teachers)
-                        if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits):
+                        if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability):
                             timetable[section][day][time_slot] = {"subject": subject, "teacher": teacher}
                             teacher_lecture_count[teacher] += 1
                             if teacher not in teacher_sections_taught:
                                 teacher_sections_taught[teacher] = []
                             if section not in teacher_sections_taught[teacher]:
                                 teacher_sections_taught[teacher].append(section)
-                            scheduled = True
+        
+        total_morning_slots = sum(1 for day in days for ts in morning_slots 
+                                if ts in timetable[section][day] and timetable[section][day][ts]["subject"] != "Lunch")
+        
+        needs_afternoon = total_morning_slots < 20
+        
+        if needs_afternoon:
+            for day in days:
+                timetable[section][day][lunch_slot] = {"subject": "Lunch", "teacher": None}
+            
+            for day in days:
+                for time_slot in afternoon_slots:
+                    total_slots_filled = sum(1 for d in days for ts in timetable[section][d] 
+                                           if ts != lunch_slot and timetable[section][d][ts]["subject"] != "Lunch")
+                    
+                    if total_slots_filled >= 25:
+                        break
+                    
+                    if time_slot not in timetable[section][day]:
+                        subject = random.choice(core_pool)
+                        
+                        valid_teachers = [
+                            t for t in subject_teacher_mapping[subject] 
+                            if teacher_availability.get(t, True)
+                            and t in teacher_subject_sections 
+                            and subject in teacher_subject_sections[t] 
+                            and section in teacher_subject_sections[t][subject]
+                            and (teacher_lecture_count.get(t, 0) + 1) <= (teacher_lecture_limits.get(t, float('inf')))
+                        ]
+                        
+                        if valid_teachers:
+                            teacher = random.choice(valid_teachers)
+                            if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability):
+                                timetable[section][day][time_slot] = {"subject": subject, "teacher": teacher}
+                                teacher_lecture_count[teacher] += 1
+                                if teacher not in teacher_sections_taught:
+                                    teacher_sections_taught[teacher] = []
+                                if section not in teacher_sections_taught[teacher]:
+                                    teacher_sections_taught[teacher].append(section)
 
     for teacher, limit in teacher_lecture_limits.items():
+        if not teacher_availability.get(teacher, True):
+            continue
+        
         if limit is not None and limit > 0: 
             current_lectures = teacher_lecture_count.get(teacher, 0)
             if current_lectures != limit:
@@ -218,12 +290,12 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                     for section in data["sections"]:
                         for day in days:
                             for time_slot in data["time_slots"]:
-                                if time_slot == lunch_slot or (day == elective_day and time_slot in elective_slots):
+                                if time_slot == lunch_slot or (day in elective_days and time_slot in elective_slots):
                                     continue
                                 if timetable[section][day].get(time_slot, {}).get("teacher") is None:
                                     subject = random.choice(core_subjects_all + lab_subjects + (exclusive_subjects.get(section, [])))
                                     if teacher in subject_teacher_mapping[subject] and teacher in teacher_subject_sections and subject in teacher_subject_sections[teacher] and section in teacher_subject_sections[teacher][subject]:
-                                        if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits):
+                                        if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability):
                                             timetable[section][day][time_slot] = {"subject": subject, "teacher": teacher}
                                             teacher_lecture_count[teacher] += 1
                                             if teacher_lecture_count[teacher] == limit:
