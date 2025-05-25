@@ -8,6 +8,7 @@ import TeacherAvailabilityPage from "./TeacherAvailabilityPage";
 import TeacherAssignmentPage from "./TeacherSectionAssignmentPage";
 import UnavailableTeachersPage from "./UnavailableTeachersPage";
 import TeacherLectureLimitPage from "./TeacherLectureLimitPage";
+import TeacherManagementPage from "./TeacherManagementPage";
 import "./App.css";
 
 const StyledContainer = styled(Container)(({ theme }) => ({
@@ -56,6 +57,7 @@ function App() {
           <Route path="/assign-sections" element={<TeacherAssignmentPage />} />
           <Route path="/unavailable-teachers" element={<UnavailableTeachersPage />} />
           <Route path="/lecture-limits" element={<TeacherLectureLimitPage />} />
+          <Route path="/teacher-management" element={<TeacherManagementPage />} />
         </Routes>
       </StyledContainer>
     </Router>
@@ -69,7 +71,7 @@ function Home() {
       align="center"
       sx={{ color: "#757575", marginTop: 4 }}
     >
-      Welcome! Please Choose a roLE.
+      Welcome to AI Timetable System! Choose your view.
     </Typography>
   );
 }
