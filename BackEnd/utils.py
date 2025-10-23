@@ -50,34 +50,67 @@ SUBJECTS_BY_SEMESTER = {
     }
 }
 
+# Default teachers (used as fallback or initial seeding)
+DEFAULT_TEACHERS = [
+    "Dr. D.R. Gangodkar", "Dr. Jyoti Agarwal", "Dr. Amit Kumar", "Mr. Kireet Joshi",
+    "Mr. Sanjeev Kukreti", "Ms. Garima Sharma", "Mr. Chitransh", "Dr. Vikas Tripathi",
+    "Mr. Piyush Agarwal", "Mr. Vivek Tomer", "Mr. Rishi Kumar", "Dr. S.P. Mourya",
+    "Dr. Ankit Tomer", "Dr. Hemant Singh Pokhariya", "Dr. Sribidhya Mohanty",
+    "Dr. Abhay Sharma", "Dr. Gourav Verma", "Dr. Mridul Gupta", "Dr. Vikas Rathi",
+    "Mr. Akshay Rajput", "Dr. Anupam Singh", "Ms. Meenakshi Maindola",
+    "Mr. Siddhant Thapliyal", "Mr. Abhinav Sharma", "Ms. Shweta Bajaj",
+    "Ms. Priyanka Agarwal", "Ms. Medhavi Vishnoi", "Mr. Rana Pratap Mishra",
+    "Mr. Shobhit Garg", "Mr. Vishal Trivedi", "Dr. Teekam Singh",
+    "Mr. Mohammad Rehan", "Mr. O.P. Pal", "Dr. Jay R. Bhatnagar", "Dr. Deepak Gaur",
+    "Mr. Gulshan", "Dr. Pawan Kumar Mishra", "Dr. Pradeep Juneja", "Mr. Kamlesh Kukreti",
+    "Ms. Poonam Raturi", "Ms. Neha Belwal", "Ms. Alankrita Joshi", "Dr. Upma Jain",
+    "Mr. Jagdish Chandola", "Dr. Hradesh Kumar", "Mr. Sharath K R", "Mr. Rohan Verma",
+    "Mr. Kuldeep Nautiyal"
+]
+
 data = {
     "sections": ["A", "B", "C", "D", "E", "F", "G", "H", "ARQ", "DS1", "DS2", "ML1", "ML2", "Cyber", "AI"],
     "subjects": [
         "TCS-408", "TCS-402", "TCS-403", "TCS-409", "XCS-401", "TOC-401",
         "Elective", "PCS-408", "PCS-403", "PCS-409", "DP900", "AI900", "NDE"
     ],
-    "teachers": [
-        "Dr. D.R. Gangodkar", "Dr. Jyoti Agarwal", "Dr. Amit Kumar", "Mr. Kireet Joshi",
-        "Mr. Sanjeev Kukreti", "Ms. Garima Sharma", "Mr. Chitransh", "Dr. Vikas Tripathi",
-        "Mr. Piyush Agarwal", "Mr. Vivek Tomer", "Mr. Rishi Kumar", "Dr. S.P. Mourya",
-        "Dr. Ankit Tomer", "Dr. Hemant Singh Pokhariya", "Dr. Sribidhya Mohanty",
-        "Dr. Abhay Sharma", "Dr. Gourav Verma", "Dr. Mridul Gupta", "Dr. Vikas Rathi",
-        "Mr. Akshay Rajput", "Dr. Anupam Singh", "Ms. Meenakshi Maindola",
-        "Mr. Siddhant Thapliyal", "Mr. Abhinav Sharma", "Ms. Shweta Bajaj",
-        "Ms. Priyanka Agarwal", "Ms. Medhavi Vishnoi", "Mr. Rana Pratap Mishra",
-        "Mr. Shobhit Garg", "Mr. Vishal Trivedi", "Dr. Teekam Singh",
-        "Mr. Mohammad Rehan", "Mr. O.P. Pal", "Dr. Jay R. Bhatnagar", "Dr. Deepak Gaur",
-        "Mr. Gulshan", "Dr. Pawan Kumar Mishra", "Dr. Pradeep Juneja", "Mr. Kamlesh Kukreti",
-        "Ms. Poonam Raturi", "Ms. Neha Belwal", "Ms. Alankrita Joshi", "Dr. Upma Jain",
-        "Mr. Jagdish Chandola", "Dr. Hradesh Kumar", "Mr. Sharath K R", "Mr. Rohan Verma",
-        "Mr. Kuldeep Nautiyal"
-    ],
+    "teachers": DEFAULT_TEACHERS.copy(),  # Will be updated dynamically from database
     "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
     "time_slots": [
         "8:00-9:00", "9:00-10:00", "10:00-11:00", "11:00-12:00",
         "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00"
     ]
 }
+
+def load_teachers_from_db(db):
+    """Load all active teachers from database and update data['teachers']"""
+    try:
+        from backend_api import Teacher
+        teachers = db.query(Teacher).filter(Teacher.is_active == True).all()
+        if teachers:
+            data["teachers"] = [teacher.name for teacher in teachers]
+            print(f"Loaded {len(data['teachers'])} teachers from database")
+        else:
+            print("No teachers found in database, using defaults")
+    except Exception as e:
+        print(f"Error loading teachers from database: {e}")
+        data["teachers"] = DEFAULT_TEACHERS.copy()
+
+def get_all_teachers():
+    """Get list of all active teachers"""
+    return data["teachers"]
+
+def sync_teacher_to_data(teacher_name):
+    """Add a teacher to the data structure if not already present"""
+    if teacher_name not in data["teachers"]:
+        data["teachers"].append(teacher_name)
+        print(f"Added teacher {teacher_name} to data structure")
+
+def remove_teacher_from_data(teacher_name):
+    """Remove a teacher from the data structure"""
+    if teacher_name in data["teachers"]:
+        data["teachers"].remove(teacher_name)
+        print(f"Removed teacher {teacher_name} from data structure")
 
 subject_teacher_mapping = {
     "TCS-408": ["Dr. D.R. Gangodkar", "Dr. Jyoti Agarwal", "Dr. Amit Kumar", "Mr. Kireet Joshi", "Mr. Sanjeev Kukreti", "Ms. Garima Sharma", "Mr. Chitransh"],
@@ -96,21 +129,75 @@ subject_teacher_mapping = {
     "PCS-409": ["Dr. Upma Jain", "Mr. Jagdish Chandola", "Dr. Hradesh Kumar", "Mr. Sharath K R", "Mr. Rohan Verma", "Mr. Kuldeep Nautiyal"],
     "DP900": ["Mr. Vishal Trivedi", "Dr. Teekam Singh"],
     "AI900": ["Dr. Jay R. Bhatnagar", "Ms. Garima Sharma"],
-    "NDE": ["Mr. Mohammad Rehan", "Mr. O.P. Pal"]
+    "NDE": ["Mr. Mohammad Rehan", "Mr. O.P. Pal"],
+    # Generic mappings for other courses (can be expanded)
+    "MCS-101": ["Dr. Amit Kumar", "Dr. Vikas Tripathi"],
+    "MCS-102": ["Dr. Jyoti Agarwal", "Mr. Piyush Agarwal"],
+    "MCS-103": ["Dr. Hemant Singh Pokhariya", "Dr. Sribidhya Mohanty"],
+    "MBS-101": ["Dr. Deepak Gaur", "Dr. Jay R. Bhatnagar"],
+    "MBS-102": ["Mr. Vishal Trivedi", "Dr. Teekam Singh"],
+    "MBS-103": ["Mr. Mohammad Rehan", "Mr. O.P. Pal"],
+    "BCS-101": ["Dr. D.R. Gangodkar", "Dr. Jyoti Agarwal"],
+    "BCS-102": ["Dr. Amit Kumar", "Mr. Kireet Joshi"],
+    "BCS-103": ["Mr. Sanjeev Kukreti", "Ms. Garima Sharma"],
+    "Project": ["Dr. D.R. Gangodkar", "Dr. Jyoti Agarwal", "Dr. Amit Kumar"]
 }
 
 teacher_course_mapping = {}
 
 def get_semester_from_subject_code(subject_code):
+    """Extract semester number from subject code"""
     try:
         if "-" in subject_code:
             number_part = subject_code.split("-")[1]
-            return int(number_part[0])
+            if number_part.isdigit():
+                return int(number_part[0])
+            # Handle special codes like DP900, AI900
+            if len(number_part) >= 3 and number_part[:1].isdigit():
+                return int(number_part[0])
     except:
         pass
     return None
 
 def get_subjects_for_semester(course, semester):
-    if course == "BTech" and semester == 4:
-        return data["subjects"]
+    """Get subjects for a given course and semester"""
+    try:
+        if course in SUBJECTS_BY_SEMESTER:
+            if semester in SUBJECTS_BY_SEMESTER[course]:
+                return SUBJECTS_BY_SEMESTER[course][semester]
+    except Exception as e:
+        print(f"Error getting subjects for {course} semester {semester}: {e}")
     return []
+
+def get_sections_for_course(course):
+    """Get all sections for a given course"""
+    if course in courses:
+        return courses[course]["sections"]
+    return []
+
+def get_semesters_for_course(course):
+    """Get all semesters for a given course"""
+    if course in courses:
+        return courses[course]["semesters"]
+    return []
+
+def validate_course_semester_section(course, semester, section):
+    """Validate if the combination of course, semester, and section is valid"""
+    if course not in courses:
+        return False, f"Course '{course}' not found"
+    
+    if semester not in courses[course]["semesters"]:
+        return False, f"Semester {semester} not available for {course}"
+    
+    if section not in courses[course]["sections"]:
+        return False, f"Section '{section}' not available for {course}"
+    
+    return True, "Valid combination"
+
+def get_teachers_for_subject(subject):
+    """Get list of teachers who can teach a subject"""
+    return subject_teacher_mapping.get(subject, [])
+
+def get_all_courses():
+    """Get list of all available courses"""
+    return list(courses.keys())

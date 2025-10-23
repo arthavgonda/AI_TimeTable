@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import {
   Container,
   Typography,
@@ -35,6 +37,9 @@ import {
   Toolbar,
   Tooltip,
   ListItemIcon,
+  Collapse,
+  ListItemButton,
+  Badge,
 } from "@mui/material";
 import { styled } from "@mui/system";
 import EditIcon from "@mui/icons-material/Edit";
@@ -46,12 +51,22 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ClearIcon from '@mui/icons-material/Clear';
+import DownloadIcon from '@mui/icons-material/Download';
+import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked';
 import PersonIcon from '@mui/icons-material/Person';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import TimerIcon from '@mui/icons-material/Timer';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import PeopleIcon from '@mui/icons-material/People';
+import ClassIcon from '@mui/icons-material/Class';
+import InsightsIcon from '@mui/icons-material/Insights';
 import { useNavigate } from "react-router-dom";
 
 const API_URL = "http://localhost:8000";
@@ -118,26 +133,47 @@ const StyledTextField = styled(TextField)(({ theme }) => ({
 
 const StyledDrawer = styled(Drawer)(({ theme }) => ({
   "& .MuiDrawer-paper": {
-    backgroundColor: "#2c3e50",
+    backgroundColor: "#1a252f",
     color: "#ffffff",
-    width: 280,
+    width: 300,
     paddingTop: theme.spacing(2),
+    boxShadow: "2px 0 8px rgba(0,0,0,0.15)",
   },
 }));
 
 const DrawerHeader = styled(Box)(({ theme }) => ({
   padding: theme.spacing(3),
-  borderBottom: "1px solid rgba(255,255,255,0.1)",
-  marginBottom: theme.spacing(2),
+  borderBottom: "1px solid rgba(255,255,255,0.15)",
+  marginBottom: theme.spacing(1),
+  background: "linear-gradient(135deg, #2c3e50 0%, #34495e 100%)",
 }));
 
-const StyledListItem = styled(ListItem)(({ theme }) => ({
-  margin: theme.spacing(0.5, 2),
+const CategoryHeader = styled(ListItemButton)(({ theme }) => ({
+  margin: theme.spacing(1, 1),
   borderRadius: "8px",
-  transition: "all 0.2s ease",
+  padding: theme.spacing(1.5),
+  fontWeight: 600,
+  backgroundColor: "rgba(255,255,255,0.05)",
   "&:hover": {
     backgroundColor: "rgba(255,255,255,0.1)",
   },
+}));
+
+const StyledListItem = styled(ListItemButton)(({ theme }) => ({
+  margin: theme.spacing(0.5, 1),
+  marginLeft: theme.spacing(2),
+  borderRadius: "6px",
+  padding: theme.spacing(1, 2),
+  transition: "all 0.2s ease",
+  "&:hover": {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    transform: "translateX(4px)",
+  },
+}));
+
+const CategoryDivider = styled(Divider)(({ theme }) => ({
+  margin: theme.spacing(1, 2),
+  backgroundColor: "rgba(255,255,255,0.1)",
 }));
 
 // Timetable specific styles
@@ -217,6 +253,17 @@ const TeacherName = styled(Typography)(({ theme }) => ({
   fontStyle: "italic",
 }));
 
+const RoomNumber = styled(Typography)(({ theme }) => ({
+  fontSize: "0.7rem",
+  color: "#e74c3c",
+  fontWeight: 600,
+  marginTop: "2px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "4px",
+}));
+
 const EmptySlot = styled(Typography)(({ theme }) => ({
   color: "#bdbdbd",
   fontSize: "1.5rem",
@@ -259,6 +306,11 @@ function AdminDashboard() {
     return `${day}-${month}-${year}`;
   };
   const [date, setDate] = useState(formatDate(today));
+  const [course, setCourse] = useState("BTech");
+  const [semester, setSemester] = useState(4);
+  const [courses, setCourses] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [availableSections, setAvailableSections] = useState([]);
   const [timetable, setTimetable] = useState(null);
   const [endDate, setEndDate] = useState("");
   const [teacherAvailability, setTeacherAvailability] = useState({});
@@ -272,6 +324,20 @@ function AdminDashboard() {
   const [selectedSection, setSelectedSection] = useState("");
   const [weekDates, setWeekDates] = useState({});
   const navigate = useNavigate();
+  
+  // Collapsible menu state
+  const [openTeachers, setOpenTeachers] = useState(false);
+  const [openScheduling, setOpenScheduling] = useState(false);
+  const [openClassrooms, setOpenClassrooms] = useState(false);
+  const [openAnalytics, setOpenAnalytics] = useState(false);
+  
+  // Download dialog state
+  const [openDownloadDialog, setOpenDownloadDialog] = useState(false);
+  const [downloadType, setDownloadType] = useState("all"); // "all" or "specific"
+  const [downloadCourse, setDownloadCourse] = useState("BTech");
+  const [downloadSemester, setDownloadSemester] = useState(4);
+  const [downloadSection, setDownloadSection] = useState("");
+  const timetableRef = useRef(null);
 
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const timeSlots = [
@@ -348,6 +414,49 @@ function AdminDashboard() {
     return timeSlots.filter(slot => slotsWithContent.has(slot));
   };
 
+  // Load courses on mount
+  useEffect(() => {
+    const loadCourses = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/courses`);
+        setCourses(response.data.courses || []);
+      } catch (error) {
+        console.error("Error loading courses:", error);
+      }
+    };
+    loadCourses();
+  }, []);
+
+  // Load semesters when course changes
+  useEffect(() => {
+    if (course) {
+      const loadSemesters = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/semesters/${course}`);
+          setSemesters(response.data.semesters || []);
+        } catch (error) {
+          console.error("Error loading semesters:", error);
+        }
+      };
+      loadSemesters();
+    }
+  }, [course]);
+
+  // Load sections when course changes
+  useEffect(() => {
+    if (course) {
+      const loadSections = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/sections/${course}`);
+          setAvailableSections(response.data.sections || []);
+        } catch (error) {
+          console.error("Error loading sections:", error);
+        }
+      };
+      loadSections();
+    }
+  }, [course]);
+
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true);
@@ -397,10 +506,19 @@ function AdminDashboard() {
 
   const generateTimetable = async () => {
     setLoading(true);
-    setMessage("Generating timetable...");
+    setMessage(`Generating timetable for ${course} Semester ${semester}...`);
     try {
       const backendDate = parseDate(date);
-      const response = await axios.get(`${API_URL}/generate?date=${backendDate}`, { timeout: 120000 });
+      const response = await axios.get(
+        `${API_URL}/generate?date=${backendDate}&course=${course}&semester=${semester}`, 
+        { timeout: 120000 }
+      );
+      
+      if (response.data.error) {
+        setMessage(`Error: ${response.data.error}`);
+        return;
+      }
+      
       setTimetable(response.data.timetable || {});
       setEndDate(formatDate(new Date(response.data.end_date)));
       setDate(formatDate(new Date(response.data.date)));
@@ -408,7 +526,7 @@ function AdminDashboard() {
       if (Object.keys(response.data.timetable || {}).length > 0) {
         setSelectedSection(Object.keys(response.data.timetable)[0]);
       }
-      setMessage("Timetable generated successfully!");
+      setMessage(`Timetable generated successfully for ${course} Semester ${semester}!`);
       setRefreshTrigger((prev) => prev + 1);
     } catch (error) {
       setMessage("Error generating timetable: " + (error.response?.data?.error || error.message));
@@ -430,6 +548,123 @@ function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const downloadSpecificTimetable = async (sectionToDownload) => {
+    if (!timetable || !timetable[sectionToDownload]) {
+      setMessage(`Error: No timetable data for section ${sectionToDownload}`);
+      return;
+    }
+
+    try {
+      setMessage(`Generating PDF for Section ${sectionToDownload}...`);
+      
+      // Create a temporary container for the specific section
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      document.body.appendChild(tempContainer);
+      
+      // Render the timetable for this section
+      tempContainer.innerHTML = `
+        <div style="padding: 20px; background: white;">
+          <div style="padding: 20px; background: #2c3e50; color: white; text-align: center; margin-bottom: 10px;">
+            <h2 style="margin: 0;">${course} - Semester ${semester} - Section ${sectionToDownload}</h2>
+            <p style="margin: 5px 0 0 0;">${date} to ${endDate}</p>
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th style="border: 1px solid #ddd; padding: 10px; background: #2c3e50; color: white;">Time</th>
+                ${days.map(day => `<th style="border: 1px solid #ddd; padding: 10px; background: #2c3e50; color: white;">${day}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${getActiveTimeSlotsForSection(sectionToDownload).map(timeSlot => `
+                <tr>
+                  <td style="border: 1px solid #ddd; padding: 10px; background: #f5f5f5; font-weight: 600;">${timeSlot}</td>
+                  ${days.map(day => {
+                    const content = timetable[sectionToDownload]?.[day]?.[timeSlot];
+                    if (!content) return '<td style="border: 1px solid #ddd; padding: 10px;">—</td>';
+                    if (content.subject === "Lunch") {
+                      return '<td style="border: 1px solid #ddd; padding: 10px; background: #fff3cd; text-align: center;">🍽️ Lunch</td>';
+                    }
+                    return `<td style="border: 1px solid #ddd; padding: 10px; text-align: center;">
+                      <div style="font-weight: 600; margin-bottom: 4px;">${content.subject || ''}</div>
+                      <div style="font-size: 0.85em; color: #666; font-style: italic;">${content.teacher || ''}</div>
+                      ${content.room ? `<div style="font-size: 0.75em; color: #2c3e50; font-weight: 600;">📍 ${content.room}</div>` : ''}
+                    </td>`;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const canvas = await html2canvas(tempContainer, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      document.body.removeChild(tempContainer);
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 10;
+
+      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+      pdf.save(`Timetable_${course}_Sem${semester}_Section${sectionToDownload}_${date}.pdf`);
+      
+      setMessage(`✅ PDF downloaded for Section ${sectionToDownload}`);
+    } catch (error) {
+      setMessage("Error generating PDF: " + error.message);
+      console.error("PDF error:", error);
+    }
+  };
+
+  const downloadAllTimetables = async () => {
+    if (!timetable || Object.keys(timetable).length === 0) {
+      setMessage("Error: No timetable data available");
+      return;
+    }
+
+    setMessage("Generating PDFs for all sections...");
+    const sections = Object.keys(timetable);
+    
+    for (let i = 0; i < sections.length; i++) {
+      await downloadSpecificTimetable(sections[i]);
+      // Small delay between downloads
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    setMessage(`✅ Downloaded ${sections.length} timetables successfully!`);
+  };
+
+  const handleDownload = async () => {
+    if (downloadType === "all") {
+      await downloadAllTimetables();
+    } else {
+      if (!downloadSection) {
+        setMessage("Please select a section");
+        return;
+      }
+      await downloadSpecificTimetable(downloadSection);
+    }
+    setOpenDownloadDialog(false);
   };
 
   const handleEditSubjectsTaught = (teacher) => {
@@ -479,12 +714,49 @@ function AdminDashboard() {
     setDrawerOpen(open);
   };
 
-  const menuItems = [
-    { text: "Teacher Management", icon: <ManageAccountsIcon />, path: "/teacher-management" },
-    { text: "Teacher Availability", icon: <PersonIcon />, path: "/teacher-availability" },
-    { text: "Assign Subjects & Sections", icon: <AssignmentIcon />, path: "/assign-sections" },
-    { text: "Unavailable Teachers", icon: <VisibilityOffIcon />, path: "/unavailable-teachers" },
-    { text: "Lecture Limits", icon: <TimerIcon />, path: "/lecture-limits" },
+  // Organized menu structure
+  const menuStructure = [
+    {
+      category: "Teachers",
+      icon: <PeopleIcon />,
+      open: openTeachers,
+      setOpen: setOpenTeachers,
+      items: [
+        { text: "Manage Teachers", icon: <ManageAccountsIcon />, path: "/teacher-management", description: "Add, edit, or remove teachers" },
+        { text: "Availability & Preferences", icon: <AccessTimeIcon />, path: "/teacher-preferences", description: "Set time windows and preferences" },
+        { text: "Quick Availability Toggle", icon: <PersonIcon />, path: "/teacher-availability", description: "Mark teachers available/unavailable" },
+        { text: "Lecture Limits", icon: <TimerIcon />, path: "/lecture-limits", description: "Set maximum lectures per teacher" },
+      ]
+    },
+    {
+      category: "Scheduling",
+      icon: <ClassIcon />,
+      open: openScheduling,
+      setOpen: setOpenScheduling,
+      items: [
+        { text: "Assign Subjects & Sections", icon: <AssignmentIcon />, path: "/assign-sections", description: "Assign teachers to subjects and sections" },
+        { text: "View Unavailable Teachers", icon: <VisibilityOffIcon />, path: "/unavailable-teachers", description: "See who's currently unavailable" },
+      ]
+    },
+    {
+      category: "Classrooms",
+      icon: <MeetingRoomIcon />,
+      open: openClassrooms,
+      setOpen: setOpenClassrooms,
+      items: [
+        { text: "Manage Rooms", icon: <MeetingRoomIcon />, path: "/classroom-management", description: "Add, edit, or remove classrooms" },
+        { text: "Room Conflicts & Utilization", icon: <LocationOnIcon />, path: "/room-conflicts", description: "View conflicts and usage statistics" },
+      ]
+    },
+    {
+      category: "Analytics & Reports",
+      icon: <InsightsIcon />,
+      open: openAnalytics,
+      setOpen: setOpenAnalytics,
+      items: [
+        { text: "Teacher Workload", icon: <BarChartIcon />, path: "/teacher-load", description: "View teacher load distribution" },
+      ]
+    }
   ];
 
   return (
@@ -521,36 +793,153 @@ function AdminDashboard() {
         onClose={toggleDrawer(false)}
       >
         <DrawerHeader>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Admin Menu
+          <Typography variant="h5" sx={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 1 }}>
+            <DashboardIcon />
+            Admin Panel
           </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.8 }}>
-            Quick Navigation
+          <Typography variant="body2" sx={{ opacity: 0.7, mt: 0.5 }}>
+            Organized Navigation
           </Typography>
         </DrawerHeader>
-        <List>
-          {menuItems.map((item) => (
-            <StyledListItem
-              key={item.text}
-              button
-              onClick={() => { 
-                navigate(item.path); 
-                setDrawerOpen(false); 
-              }}
-            >
-              <ListItemIcon sx={{ color: "#fff", minWidth: 40 }}>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText primary={item.text} />
-            </StyledListItem>
+        
+        <List sx={{ px: 1 }}>
+          {menuStructure.map((category, index) => (
+            <React.Fragment key={category.category}>
+              {/* Category Header */}
+              <CategoryHeader
+                onClick={() => category.setOpen(!category.open)}
+              >
+                <ListItemIcon sx={{ color: "#fff", minWidth: 40 }}>
+                  {category.icon}
+                </ListItemIcon>
+                <ListItemText 
+                  primary={category.category}
+                  primaryTypographyProps={{
+                    fontWeight: 600,
+                    fontSize: "0.95rem",
+                  }}
+                />
+                <Badge 
+                  badgeContent={category.items.length} 
+                  color="primary"
+                  sx={{ mr: 1 }}
+                />
+                {category.open ? <ExpandLess /> : <ExpandMore />}
+              </CategoryHeader>
+
+              {/* Category Items */}
+              <Collapse in={category.open} timeout="auto" unmountOnExit>
+                <List component="div" disablePadding>
+                  {category.items.map((item) => (
+                    <Tooltip
+                      key={item.text}
+                      title={item.description}
+                      placement="left"
+                      arrow
+                    >
+                      <StyledListItem
+                        onClick={() => { 
+                          navigate(item.path); 
+                          setDrawerOpen(false); 
+                        }}
+                      >
+                        <ListItemIcon sx={{ color: "rgba(255,255,255,0.7)", minWidth: 36 }}>
+                          {item.icon}
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={item.text}
+                          primaryTypographyProps={{
+                            fontSize: "0.875rem",
+                          }}
+                        />
+                      </StyledListItem>
+                    </Tooltip>
+                  ))}
+                </List>
+              </Collapse>
+
+              {/* Divider between categories */}
+              {index < menuStructure.length - 1 && <CategoryDivider />}
+            </React.Fragment>
           ))}
         </List>
+
+        {/* Quick Actions Footer */}
+        <Box sx={{ 
+          position: "absolute", 
+          bottom: 0, 
+          left: 0, 
+          right: 0, 
+          p: 2, 
+          borderTop: "1px solid rgba(255,255,255,0.1)",
+          backgroundColor: "rgba(0,0,0,0.2)"
+        }}>
+          <Typography variant="caption" sx={{ opacity: 0.6, display: "block", mb: 0.5 }}>
+            Quick Actions
+          </Typography>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Tooltip title="Generate Timetable">
+              <IconButton 
+                size="small" 
+                onClick={generateTimetable}
+                sx={{ 
+                  color: "#fff", 
+                  backgroundColor: "rgba(39, 174, 96, 0.2)",
+                  "&:hover": { backgroundColor: "rgba(39, 174, 96, 0.3)" }
+                }}
+              >
+                <AddCircleIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Refresh Data">
+              <IconButton 
+                size="small" 
+                onClick={() => setRefreshTrigger(prev => prev + 1)}
+                sx={{ 
+                  color: "#fff", 
+                  backgroundColor: "rgba(52, 152, 219, 0.2)",
+                  "&:hover": { backgroundColor: "rgba(52, 152, 219, 0.3)" }
+                }}
+              >
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
       </StyledDrawer>
 
       <ControlsCard>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Course</InputLabel>
+                <Select
+                  value={course}
+                  onChange={(e) => setCourse(e.target.value)}
+                  label="Course"
+                >
+                  {courses.map((c) => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={1.5}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Semester</InputLabel>
+                <Select
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value)}
+                  label="Semester"
+                >
+                  {semesters.map((sem) => (
+                    <MenuItem key={sem} value={sem}>Sem {sem}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2.5}>
               <StyledTextField
                 fullWidth
                 label="Start Date (DD-MM-YYYY)"
@@ -563,19 +952,19 @@ function AdminDashboard() {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={9}>
+            <Grid item xs={12} md={6}>
               <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                 <StyledButton 
                   variant="contained" 
                   onClick={fetchTimetable} 
                   disabled={loading}
                   sx={{ 
-                    backgroundColor: "#3498db",
-                    "&:hover": { backgroundColor: "#2980b9" }
+                    backgroundColor: "#2c3e50",
+                    "&:hover": { backgroundColor: "#34495e" }
                   }}
                   startIcon={<RefreshIcon />}
                 >
-                  Fetch Timetable
+                  Fetch
                 </StyledButton>
                 <StyledButton 
                   variant="contained" 
@@ -587,7 +976,7 @@ function AdminDashboard() {
                   }}
                   startIcon={<AddCircleIcon />}
                 >
-                  Generate Timetable
+                  Generate
                 </StyledButton>
                 <StyledButton 
                   variant="contained" 
@@ -599,7 +988,19 @@ function AdminDashboard() {
                   }}
                   startIcon={<NotificationsIcon />}
                 >
-                  Send Notifications
+                  Notify
+                </StyledButton>
+                <StyledButton 
+                  variant="contained" 
+                  onClick={() => setOpenDownloadDialog(true)}
+                  disabled={!timetable || loading}
+                  sx={{ 
+                    backgroundColor: "#3498db",
+                    "&:hover": { backgroundColor: "#2980b9" }
+                  }}
+                  startIcon={<DownloadIcon />}
+                >
+                  Download
                 </StyledButton>
                 <StyledButton 
                   variant="outlined" 
@@ -673,7 +1074,7 @@ function AdminDashboard() {
                 <TimetableContainer>
                   <Box sx={{ p: 2, backgroundColor: "#2c3e50", color: "#fff" }}>
                     <Typography variant="h5" sx={{ fontWeight: 600, textAlign: "center" }}>
-                      Section {selectedSection} - Weekly Timetable
+                      {course} - Semester {semester} - Section {selectedSection}
                     </Typography>
                     <Typography variant="body2" sx={{ textAlign: "center", opacity: 0.8, mt: 0.5 }}>
                       {date} to {endDate}
@@ -728,6 +1129,12 @@ function AdminDashboard() {
                                           ? "Elective Faculty" 
                                           : slotContent.teacher || "TBA"}
                                       </TeacherName>
+                                      {slotContent.room && (
+                                        <RoomNumber>
+                                          <LocationOnIcon sx={{ fontSize: 12 }} />
+                                          {slotContent.room}
+                                        </RoomNumber>
+                                      )}
                                     </SubjectBox>
                                   ) : (
                                     <EmptySlot>–</EmptySlot>
@@ -833,6 +1240,12 @@ function AdminDashboard() {
                                             ? "Elective Faculty"
                                             : slotContent.teacher || "TBA"}
                                         </TeacherName>
+                                        {slotContent.room && (
+                                          <RoomNumber>
+                                            <LocationOnIcon sx={{ fontSize: 12 }} />
+                                            {slotContent.room}
+                                          </RoomNumber>
+                                        )}
                                       </SubjectBox>
                                     ) : (
                                       <EmptySlot>–</EmptySlot>
@@ -879,6 +1292,110 @@ function AdminDashboard() {
               <Button onClick={() => setOpenEditDialog(false)}>Cancel</Button>
               <Button onClick={handleSaveEditedSubjects} variant="contained">
                 Save
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Download Timetable Dialog */}
+          <Dialog open={openDownloadDialog} onClose={() => setOpenDownloadDialog(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>
+              Download Timetable
+            </DialogTitle>
+            <DialogContent>
+              <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 3 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Choose download option:
+                </Typography>
+                
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <Paper 
+                    onClick={() => setDownloadType("all")}
+                    sx={{ 
+                      p: 2, 
+                      cursor: "pointer",
+                      border: downloadType === "all" ? "2px solid #2c3e50" : "1px solid #e0e0e0",
+                      backgroundColor: downloadType === "all" ? "#f5f5f5" : "transparent",
+                      "&:hover": { backgroundColor: "#f5f5f5" }
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <RadioButtonCheckedIcon 
+                        sx={{ color: downloadType === "all" ? "#2c3e50" : "#bbb" }} 
+                      />
+                      <Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          Download All Sections
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Downloads PDFs for all sections in current timetable
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Paper>
+
+                  <Paper 
+                    onClick={() => setDownloadType("specific")}
+                    sx={{ 
+                      p: 2, 
+                      cursor: "pointer",
+                      border: downloadType === "specific" ? "2px solid #2c3e50" : "1px solid #e0e0e0",
+                      backgroundColor: downloadType === "specific" ? "#f5f5f5" : "transparent",
+                      "&:hover": { backgroundColor: "#f5f5f5" }
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <RadioButtonCheckedIcon 
+                        sx={{ color: downloadType === "specific" ? "#2c3e50" : "#bbb" }} 
+                      />
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          Download Specific Section
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Download PDF for a specific section
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Paper>
+                </Box>
+
+                {downloadType === "specific" && (
+                  <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Select Section</InputLabel>
+                      <Select
+                        value={downloadSection}
+                        onChange={(e) => setDownloadSection(e.target.value)}
+                        label="Select Section"
+                      >
+                        {timetable && Object.keys(timetable).map((sec) => (
+                          <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+
+                {downloadType === "all" && timetable && (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    {Object.keys(timetable).length} sections will be downloaded
+                  </Alert>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setOpenDownloadDialog(false)}>Cancel</Button>
+              <Button 
+                onClick={handleDownload}
+                variant="contained"
+                startIcon={<DownloadIcon />}
+                disabled={downloadType === "specific" && !downloadSection}
+                sx={{
+                  backgroundColor: "#3498db",
+                  "&:hover": { backgroundColor: "#2980b9" }
+                }}
+              >
+                Download {downloadType === "all" ? "All" : "Section"}
               </Button>
             </DialogActions>
           </Dialog>

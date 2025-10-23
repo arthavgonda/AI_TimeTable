@@ -17,78 +17,153 @@ import {
   Alert,
   Chip,
   Stack,
-  Divider
+  Divider,
+  Grid,
+  Button,
+  CircularProgress,
+  Card,
+  CardContent,
 } from "@mui/material";
 import { styled } from "@mui/system";
+import { Refresh, School, Assignment } from "@mui/icons-material";
 
 const API_URL = "http://localhost:8000";
 
 const StyledContainer = styled(Container)(({ theme }) => ({
-  padding: theme.spacing(4),
-  backgroundColor: "#f5f7fa",
+  padding: theme.spacing(3),
   minHeight: "100vh",
+}));
+
+const Header = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(3),
+  marginBottom: theme.spacing(3),
+  backgroundColor: theme.palette.primary.main,
+  color: theme.palette.primary.contrastText,
 }));
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
-  borderRadius: "12px",
-  boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-  backgroundColor: "#ffffff",
+  marginTop: theme.spacing(2),
 }));
 
 const StyledTable = styled(Table)(({ theme }) => ({
   "& .MuiTableHead-root": {
-    backgroundColor: "#e3f2fd",
-  },
-  "& .MuiTableRow-root:nth-of-type(odd)": {
     backgroundColor: "#f5f5f5",
   },
 }));
 
 const SubjectChip = styled(Chip)(({ theme }) => ({
-  marginBottom: theme.spacing(1),
-  fontWeight: "bold",
-  backgroundColor: "#e3f2fd",
+  marginBottom: theme.spacing(0.5),
+  fontWeight: 500,
 }));
 
 function TeacherAssignmentPage() {
   const [teachers, setTeachers] = useState([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [course, setCourse] = useState("BTech");
+  const [semester, setSemester] = useState(4);
+  const [courses, setCourses] = useState([]);
+  const [semesters, setSemesters] = useState([]);
   const [sections, setSections] = useState([]);
+  const [subjects, setSubjects] = useState([]);
 
+  // Load courses on mount
   useEffect(() => {
-    fetchTeacherData();
+    const loadCourses = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/courses`);
+        setCourses(response.data.courses || []);
+      } catch (error) {
+        console.error("Error loading courses:", error);
+      }
+    };
+    loadCourses();
   }, []);
+
+  // Load semesters when course changes
+  useEffect(() => {
+    if (course) {
+      const loadSemesters = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/semesters/${course}`);
+          setSemesters(response.data.semesters || []);
+        } catch (error) {
+          console.error("Error loading semesters:", error);
+        }
+      };
+      loadSemesters();
+    }
+  }, [course]);
+
+  // Load sections when course changes
+  useEffect(() => {
+    if (course) {
+      const loadSections = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/sections/${course}`);
+          setSections(response.data.sections || []);
+        } catch (error) {
+          console.error("Error loading sections:", error);
+        }
+      };
+      loadSections();
+    }
+  }, [course]);
+
+  // Load subjects when course or semester changes
+  useEffect(() => {
+    if (course && semester) {
+      const loadSubjects = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/subjects/${course}/${semester}`);
+          setSubjects(response.data.subjects || []);
+        } catch (error) {
+          console.error("Error loading subjects:", error);
+        }
+      };
+      loadSubjects();
+    }
+  }, [course, semester]);
+
+  // Fetch teacher data
+  useEffect(() => {
+    if (course && semester) {
+      fetchTeacherData();
+    }
+  }, [course, semester]);
 
   const fetchTeacherData = async () => {
     setLoading(true);
     try {
-      const [availabilityResponse, subjectSectionsResponse] = await Promise.all([
-        axios.get(`${API_URL}/teacher_availability`),
+      const [teachersResponse, subjectSectionsResponse] = await Promise.all([
+        axios.get(`${API_URL}/teachers`),
         axios.get(`${API_URL}/teacher_subject_sections`),
       ]);
-      const availability = availabilityResponse.data;
+      
+      const teachersList = teachersResponse.data.teachers || [];
       const teacherSubjectSections = subjectSectionsResponse.data || {};
 
-      const teacherList = Object.keys(availability).map((teacher) => {
-        const eligibleSubjects = Object.keys(subject_teacher_mapping).filter(
-          subject => subject_teacher_mapping[subject].includes(teacher)
-        );
+      const teacherList = teachersList.map((teacher) => {
+        // Get subjects this teacher can teach from their courseSubjects
+        const eligibleSubjects = [];
+        if (teacher.courseSubjects && teacher.courseSubjects[course]) {
+          const semKey = semester.toString();
+          if (teacher.courseSubjects[course][semKey]) {
+            eligibleSubjects.push(...teacher.courseSubjects[course][semKey]);
+          }
+        }
 
         return {
-          name: teacher,
-          available: availability[teacher],
-          eligibleSubjects: eligibleSubjects,
-          subjectSections: teacherSubjectSections[teacher] || {},
+          id: teacher.id,
+          name: teacher.name,
+          eligibleSubjects: eligibleSubjects.filter(s => subjects.includes(s)),
+          subjectSections: teacherSubjectSections[teacher.name] || {},
         };
       });
 
       setTeachers(teacherList);
-      setSections([
-        "A", "B", "C", "D", "E", "F", "G", "H", "ARQ", "DS1", "DS2", "ML1", "ML2", "Cyber", "AI",
-      ]);
-      setMessage("Teacher data loaded successfully!");
+      setMessage(`Loaded ${teacherList.length} teachers for ${course} Semester ${semester}`);
     } catch (error) {
       setMessage("Error loading teacher data: " + (error.response?.data?.error || error.message));
       console.error("Fetch error:", error);
@@ -97,145 +172,221 @@ function TeacherAssignmentPage() {
     }
   };
 
-  const assignSubjectSectionsToTeacher = async (teacherId, subject, sections) => {
+  const assignSubjectSectionsToTeacher = async (teacherId, teacherName, subject, selectedSections) => {
     setLoading(true);
     setMessage("Assigning subject and sections...");
     try {
+      // Update local state immediately for better UX
       setTeachers((prev) =>
         prev.map((teacher) =>
-          teacher.name === teacherId
+          teacher.name === teacherName
             ? {
                 ...teacher,
                 subjectSections: {
                   ...teacher.subjectSections,
-                  [subject]: sections,
+                  [subject]: selectedSections,
                 },
               }
             : teacher
         )
       );
 
+      // Send to backend
       await axios.post(`${API_URL}/assign_teacher_subject_sections`, {
-        teacher_id: teacherId,
+        teacher_id: teacherName,
         subject: subject,
-        sections: sections,
+        sections: selectedSections,
       });
-      setMessage("Subject and sections assigned successfully and persisted!");
+      
+      // Force sync teachers after assignment
+      await axios.post(`${API_URL}/sync_teachers`);
+      
+      setMessage(`✅ Assigned ${subject} to ${teacherName} for sections: ${selectedSections.join(", ")}`);
     } catch (error) {
-      setMessage("Error assigning subject and sections: " + (error.response?.data?.detail || error.message));
+      setMessage("Error assigning: " + (error.response?.data?.detail || error.message));
       console.error("Assignment error:", error);
+      // Revert on error
+      fetchTeacherData();
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <StyledContainer>
-      <StyledPaper>
-        <Typography
-          variant="h4"
-          gutterBottom
-          sx={{ fontWeight: "bold", color: "#1e88e5", marginBottom: 4, textAlign: "center" }}
+    <StyledContainer maxWidth="xl">
+      {/* Header */}
+      <Header elevation={1}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Assignment sx={{ fontSize: 32 }} />
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+              Assign Subjects & Sections
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              Assign teachers to subjects and sections for timetable generation
+            </Typography>
+          </Box>
+        </Box>
+      </Header>
+
+      {/* Course/Semester Selection */}
+      <Card>
+        <CardContent>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Course</InputLabel>
+                <Select
+                  value={course}
+                  onChange={(e) => setCourse(e.target.value)}
+                  label="Course"
+                >
+                  {courses.map((c) => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Semester</InputLabel>
+                <Select
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value)}
+                  label="Semester"
+                >
+                  {semesters.map((sem) => (
+                    <MenuItem key={sem} value={sem}>Semester {sem}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Chip 
+                icon={<School />}
+                label={`${subjects.length} Subjects`} 
+                color="primary" 
+                variant="outlined"
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<Refresh />}
+                onClick={fetchTeacherData}
+                disabled={loading}
+              >
+                Refresh
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {message && (
+        <Alert
+          severity={message.includes("Error") ? "error" : "success"}
+          sx={{ mt: 2 }}
+          onClose={() => setMessage("")}
         >
-          Assign Subjects and Sections to Teachers
+          {message}
+        </Alert>
+      )}
+
+      {/* Teacher Assignment Table */}
+      <StyledPaper>
+        <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+          Teacher Subject Assignments - {course} Semester {semester}
         </Typography>
 
-        {message && (
-          <Alert
-            severity={message.includes("Error") ? "error" : "success"}
-            sx={{ marginBottom: 2, borderRadius: "8px" }}
-          >
-            {message}
-          </Alert>
-        )}
-
-        <StyledTable>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: "bold", color: "#2196f3", padding: 2 }}>Teacher</TableCell>
-              <TableCell sx={{ fontWeight: "bold", color: "#2196f3", padding: 2 }}>Subject Assignments</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {teachers.map((teacher) => (
-              <TableRow key={teacher.name} sx={{ padding: 1 }}>
-                <TableCell sx={{ padding: 2, fontWeight: "500" }}>
-                  {teacher.name}
-                  {!teacher.available && (
-                    <Chip 
-                      label="Unavailable" 
-                      size="small" 
-                      color="error" 
-                      sx={{ ml: 1 }} 
-                    />
-                  )}
-                </TableCell>
-                <TableCell sx={{ padding: 2 }}>
-                  {teacher.eligibleSubjects.length > 0 ? (
-                    <Stack spacing={2} divider={<Divider flexItem />}>
-                      {teacher.eligibleSubjects.map((subject) => (
-                        <Box key={`${teacher.name}-${subject}`}>
-                          <SubjectChip label={subject} />
-                          <FormControl fullWidth sx={{ mt: 1 }}>
-                            <InputLabel>Sections</InputLabel>
-                            <Select
-                              multiple
-                              value={teacher.subjectSections[subject] || []}
-                              onChange={(e) => assignSubjectSectionsToTeacher(teacher.name, subject, e.target.value)}
-                              label="Sections"
-                              disabled={loading || !teacher.available}
-                              MenuProps={{ PaperProps: { style: { maxHeight: 200 } } }}
-                              renderValue={(selected) => (
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                  {selected.map((value) => (
-                                    <Chip key={value} label={value} size="small" />
-                                  ))}
-                                </Box>
-                              )}
-                            >
-                              {sections.map((section) => (
-                                <MenuItem key={section} value={section}>
-                                  {section}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      ))}
-                    </Stack>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No eligible subjects assigned.
-                    </Typography>
-                  )}
-                </TableCell>
+        {loading && !teachers.length ? (
+          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : teachers.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ p: 4, textAlign: "center" }}>
+            No teachers found. Add teachers in Teacher Management.
+          </Typography>
+        ) : (
+          <StyledTable>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600, width: "30%" }}>Teacher</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Subject & Section Assignments</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </StyledTable>
+            </TableHead>
+            <TableBody>
+              {teachers.map((teacher) => (
+                <TableRow key={teacher.id}>
+                  <TableCell sx={{ verticalAlign: "top" }}>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {teacher.name}
+                    </Typography>
+                    {teacher.eligibleSubjects.length > 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        {teacher.eligibleSubjects.length} subjects available
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {teacher.eligibleSubjects.length > 0 ? (
+                      <Stack spacing={2} divider={<Divider flexItem />}>
+                        {teacher.eligibleSubjects.map((subject) => (
+                          <Box key={`${teacher.name}-${subject}`}>
+                            <SubjectChip 
+                              label={subject} 
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                            <FormControl fullWidth sx={{ mt: 1 }}>
+                              <InputLabel>Assign Sections</InputLabel>
+                              <Select
+                                multiple
+                                value={teacher.subjectSections[subject] || []}
+                                onChange={(e) => assignSubjectSectionsToTeacher(
+                                  teacher.id,
+                                  teacher.name,
+                                  subject,
+                                  e.target.value
+                                )}
+                                label="Assign Sections"
+                                disabled={loading}
+                                renderValue={(selected) => (
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {selected.map((value) => (
+                                      <Chip key={value} label={value} size="small" />
+                                    ))}
+                                  </Box>
+                                )}
+                              >
+                                {sections.map((section) => (
+                                  <MenuItem key={section} value={section}>
+                                    Section {section}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Box>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No subjects assigned for {course} Semester {semester}.
+                        <br />
+                        Add subjects in Teacher Management.
+                      </Typography>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </StyledTable>
+        )}
       </StyledPaper>
     </StyledContainer>
   );
 }
-
-const subject_teacher_mapping = {
-  "TCS-408": ["Dr. D.R. Gangodkar", "Dr. Jyoti Agarwal", "Dr. Amit Kumar", "Mr. Kireet Joshi", "Mr. Sanjeev Kukreti", "Ms. Garima Sharma", "Mr. Chitransh"],
-  "TCS-402": ["Dr. Vikas Tripathi", "Mr. Piyush Agarwal", "Mr. Vivek Tomer", "Mr. Rishi Kumar", "Dr. S.P. Mourya", "Dr. Ankit Tomer"],
-  "TCS-403": ["Dr. Hemant Singh Pokhariya", "Dr. Sribidhya Mohanty", "Dr. Abhay Sharma", "Dr. Gourav Verma", "Dr. Mridul Gupta", "Dr. Vikas Rathi"],
-  "TCS-409": ["Mr. Akshay Rajput", "Dr. Anupam Singh", "Ms. Meenakshi Maindola", "Mr. Siddhant Thapliyal"],
-  "XCS-401": ["Mr. Abhinav Sharma", "Ms. Shweta Bajaj", "Ms. Priyanka Agarwal", "Ms. Medhavi Vishnoi", "Mr. Rana Pratap Mishra", "Mr. Shobhit Garg"],
-  "TOC-401": ["Mr. Akshay Rajput", "Mr. Siddhant Thapliyal", "Ms. Meenakshi Maindola"],
-  "Elective": [
-    "Mr. Vishal Trivedi", "Dr. Teekam Singh", "Mr. Mohammad Rehan", "Mr. O.P. Pal",
-    "Dr. Jay R. Bhatnagar", "Ms. Garima Sharma", "Mr. Siddhant Thapliyal",
-    "Dr. S.P. Mourya", "Dr. Deepak Gaur"
-  ],
-  "PCS-408": ["Mr. Kireet Joshi", "Mr. Gulshan", "Dr. Pawan Kumar Mishra", "Mr. Sanjeev Kukreti", "Dr. Jyoti Agarwal", "Mr. Mohammad Rehan", "Mr. Chitransh"],
-  "PCS-403": ["Dr. Hemant Singh Pokhariya", "Dr. Sribidhya Mohanty", "Dr. Pradeep Juneja", "Mr. Kamlesh Kukreti", "Ms. Poonam Raturi", "Dr. Mridul Gupta", "Ms. Neha Belwal", "Ms. Alankrita Joshi"],
-  "PCS-409": ["Dr. Upma Jain", "Mr. Jagdish Chandola", "Dr. Hradesh Kumar", "Mr. Sharath K R", "Mr. Rohan Verma", "Mr. Kuldeep Nautiyal"],
-  "DP900": ["Mr. Vishal Trivedi", "Dr. Teekam Singh"],
-  "AI900": ["Dr. Jay R. Bhatnagar", "Ms. Garima Sharma"],
-  "NDE": ["Mr. Mohammad Rehan", "Mr. O.P. Pal"]
-};
 
 export default TeacherAssignmentPage;

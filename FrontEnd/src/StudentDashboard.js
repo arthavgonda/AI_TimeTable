@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import {
   Container,
   Typography,
@@ -26,146 +28,129 @@ import {
   Divider,
 } from "@mui/material";
 import { styled } from "@mui/system";
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
-import SchoolIcon from '@mui/icons-material/School';
-import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import LocationOnIcon from '@mui/icons-material/LocationOn';
-import PrintIcon from '@mui/icons-material/Print';
-import DownloadIcon from '@mui/icons-material/Download';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import {
+  CalendarToday,
+  School,
+  PersonOutline,
+  LocationOn,
+  Print,
+  Download,
+  Refresh,
+} from "@mui/icons-material";
 
 const API_URL = "http://localhost:8000";
-const SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "ARQ", "DS1", "DS2", "ML1", "ML2", "Cyber", "AI"];
 
+// Minimal styled components
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(3),
-  backgroundColor: "#f8f9fa",
   minHeight: "100vh",
 }));
 
-const HeaderSection = styled(Box)(({ theme }) => ({
-  backgroundColor: "#fff",
+const Header = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
-  borderRadius: "8px",
-  boxShadow: "0 2px 4px rgba(0,0,0,0.08)",
   marginBottom: theme.spacing(3),
-}));
-
-const ControlsCard = styled(Card)(({ theme }) => ({
-  marginBottom: theme.spacing(3),
-  borderRadius: "8px",
-  boxShadow: "0 2px 4px rgba(0,0,0,0.08)",
-  border: "1px solid #e0e0e0",
+  backgroundColor: theme.palette.primary.main,
+  color: theme.palette.primary.contrastText,
 }));
 
 const TimetableContainer = styled(Paper)(({ theme }) => ({
-  borderRadius: "8px",
   overflow: "hidden",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-  border: "1px solid #e0e0e0",
-  backgroundColor: "#ffffff",
+  marginTop: theme.spacing(3),
 }));
 
 const StyledTable = styled(Table)(({ theme }) => ({
   minWidth: 1000,
-  "& .MuiTableCell-root": {
-    borderColor: "#e0e0e0",
-  },
 }));
 
 const TimeCell = styled(TableCell)(({ theme }) => ({
-  backgroundColor: "#f8f9fa",
+  backgroundColor: "#f5f5f5",
   fontWeight: 600,
-  color: "#2c3e50",
-  borderRight: "2px solid #e0e0e0",
+  color: theme.palette.text.primary,
+  borderRight: "1px solid #e0e0e0",
   padding: "12px 16px",
   textAlign: "center",
   minWidth: "120px",
-  fontSize: "0.875rem",
 }));
 
 const DayHeaderCell = styled(TableCell)(({ theme }) => ({
-  backgroundColor: "#2c3e50",
-  color: "#ffffff",
+  backgroundColor: theme.palette.primary.main,
+  color: theme.palette.primary.contrastText,
   fontWeight: 600,
   textAlign: "center",
   padding: "16px",
-  fontSize: "0.95rem",
-  borderBottom: "2px solid #2c3e50",
 }));
 
 const ClassCell = styled(TableCell)(({ theme }) => ({
   padding: "8px",
   textAlign: "center",
   verticalAlign: "middle",
-  backgroundColor: "#ffffff",
-  borderRight: "1px solid #e0e0e0",
-  borderBottom: "1px solid #e0e0e0",
   height: "80px",
+  border: "1px solid #e0e0e0",
 }));
 
 const SubjectBox = styled(Box)(({ theme, bgColor }) => ({
   backgroundColor: bgColor || "#f0f0f0",
   padding: "8px 12px",
-  borderRadius: "6px",
+  borderRadius: "4px",
   height: "100%",
   display: "flex",
   flexDirection: "column",
   justifyContent: "center",
   alignItems: "center",
-  transition: "transform 0.2s ease",
-  cursor: "pointer",
-  "&:hover": {
-    transform: "scale(1.02)",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-  },
 }));
 
-const SubjectCode = styled(Typography)(({ theme }) => ({
-  fontWeight: 700,
-  fontSize: "0.95rem",
-  color: "#2c3e50",
-  marginBottom: "4px",
-}));
-
-const TeacherName = styled(Typography)(({ theme }) => ({
-  fontSize: "0.75rem",
-  color: "#546e7a",
-  fontStyle: "italic",
-}));
-
-const EmptySlot = styled(Typography)(({ theme }) => ({
-  color: "#bdbdbd",
-  fontSize: "1.5rem",
-  fontWeight: 300,
-}));
-
-const LunchBox = styled(Box)(({ theme }) => ({
-  backgroundColor: "#fff3cd",
-  border: "1px solid #ffeaa7",
-  padding: "12px",
-  borderRadius: "6px",
-  color: "#856404",
+const SubjectCode = styled(Typography)({
   fontWeight: 600,
   fontSize: "0.9rem",
+  marginBottom: "4px",
+});
+
+const TeacherName = styled(Typography)({
+  fontSize: "0.75rem",
+  color: "#666",
+  fontStyle: "italic",
+});
+
+const RoomNumber = styled(Typography)(({ theme }) => ({
+  fontSize: "0.7rem",
+  color: theme.palette.primary.main,
+  fontWeight: 600,
+  marginTop: "2px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "4px",
 }));
 
-// Professional color scheme for subjects
+const EmptySlot = styled(Typography)({
+  color: "#bbb",
+  fontSize: "1.5rem",
+  fontWeight: 300,
+});
+
+const LunchBox = styled(Box)({
+  backgroundColor: "#fff3cd",
+  padding: "12px",
+  borderRadius: "4px",
+  color: "#856404",
+  fontWeight: 600,
+});
+
+// Subject colors - clean and minimal
 const subjectColors = {
-  "TCS-408": "#e3f2fd",  // Light Blue
-  "TCS-402": "#f3e5f5",  // Light Purple
-  "TCS-403": "#e8f5e9",  // Light Green
-  "TCS-409": "#fff3e0",  // Light Orange
-  "XCS-401": "#fce4ec",  // Light Pink
-  "TOC-401": "#e0f2f1",  // Light Teal
-  "PCS-408": "#f1f8e9",  // Light Lime
-  "PCS-403": "#e8eaf6",  // Light Indigo
-  "PCS-409": "#fff8e1",  // Light Amber
-  "DP900": "#efebe9",   // Light Brown
-  "AI900": "#fafafa",   // Light Grey
-  "NDE": "#eceff1",     // Blue Grey
-  "Elective": "#e1f5fe", // Light Cyan
+  "TCS-408": "#e3f2fd",
+  "TCS-402": "#f3e5f5",
+  "TCS-403": "#e8f5e9",
+  "TCS-409": "#fff3e0",
+  "XCS-401": "#fce4ec",
+  "TOC-401": "#e0f2f1",
+  "PCS-408": "#f1f8e9",
+  "PCS-403": "#e8eaf6",
+  "PCS-409": "#fff8e1",
+  "DP900": "#efebe9",
+  "AI900": "#fafafa",
+  "NDE": "#eceff1",
+  "Elective": "#e1f5fe",
 };
 
 function StudentDashboard() {
@@ -178,13 +163,63 @@ function StudentDashboard() {
   };
   
   const [date, setDate] = useState(formatDate(today));
+  const [course, setCourse] = useState("BTech");
+  const [semester, setSemester] = useState(4);
   const [section, setSection] = useState("");
+  const [courses, setCourses] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [sections, setSections] = useState([]);
   const [timetable, setTimetable] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [showTeachers, setShowTeachers] = useState(false);
   const [availableTeachers, setAvailableTeachers] = useState([]);
   const [weekDates, setWeekDates] = useState({});
+  const timetableRef = useRef(null);
+
+  // Load courses on component mount
+  useEffect(() => {
+    const loadCourses = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/courses`);
+        setCourses(response.data.courses || []);
+      } catch (error) {
+        console.error("Error loading courses:", error);
+      }
+    };
+    loadCourses();
+  }, []);
+
+  // Load semesters when course changes
+  useEffect(() => {
+    if (course) {
+      const loadSemesters = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/semesters/${course}`);
+          setSemesters(response.data.semesters || []);
+        } catch (error) {
+          console.error("Error loading semesters:", error);
+        }
+      };
+      loadSemesters();
+    }
+  }, [course]);
+
+  // Load sections when course changes
+  useEffect(() => {
+    if (course) {
+      const loadSections = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/sections/${course}`);
+          setSections(response.data.sections || []);
+          setSection(""); // Reset section when course changes
+        } catch (error) {
+          console.error("Error loading sections:", error);
+        }
+      };
+      loadSections();
+    }
+  }, [course]);
 
   const parseDate = (dateStr) => {
     const [day, month, year] = dateStr.split("-");
@@ -273,54 +308,14 @@ function StudentDashboard() {
   };
 
   const timeSlots = [
-    "8:00-9:00",
-    "9:00-10:00",
-    "10:00-11:00",
-    "11:00-12:00",
-    "12:00-13:00",
-    "13:00-14:00",
-    "14:00-15:00",
-    "15:00-16:00",
+    "8:00-9:00", "9:00-10:00", "10:00-11:00", "11:00-12:00",
+    "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00"
   ];
 
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-  const getActiveTimeSlots = () => {
-    if (!timetable || !Object.keys(timetable).length) return timeSlots.slice(0, 5);
-    
-    const slotsWithContent = new Set();
-    
-    ["8:00-9:00", "9:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00"].forEach(slot => {
-      slotsWithContent.add(slot);
-    });
-    
-    let hasAfternoonClasses = false;
-    days.forEach(day => {
-      if (timetable[day]) {
-        ["14:00-15:00", "15:00-16:00"].forEach(slot => {
-          if (timetable[day][slot] && timetable[day][slot].subject !== "Lunch") {
-            hasAfternoonClasses = true;
-            slotsWithContent.add(slot);
-          }
-        });
-      }
-    });
-    
-    if (hasAfternoonClasses) {
-      slotsWithContent.add("13:00-14:00");
-      slotsWithContent.add("14:00-15:00");
-      slotsWithContent.add("15:00-16:00");
-    }
-    
-    return timeSlots.filter(slot => slotsWithContent.has(slot));
-  };
-
-  const displayTimeSlots = getActiveTimeSlots();
-
   const getSlotContent = (day, timeSlot) => {
-    if (!timetable || !timetable[day] || !timetable[day][timeSlot]) {
-      return null;
-    }
+    if (!timetable || !timetable[day]) return null;
     return timetable[day][timeSlot];
   };
 
@@ -328,53 +323,123 @@ function StudentDashboard() {
     window.print();
   };
 
+  const downloadPDF = async () => {
+    if (!timetableRef.current) {
+      setMessage("Error: Timetable not found");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("Generating PDF...");
+
+    try {
+      const element = timetableRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 10;
+
+      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+      pdf.save(`Timetable_Section_${section}_${date}.pdf`);
+      
+      setMessage("PDF downloaded successfully!");
+    } catch (error) {
+      setMessage("Error generating PDF: " + error.message);
+      console.error("PDF generation error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <StyledContainer maxWidth="xl">
-      <HeaderSection>
+      {/* Header */}
+      <Header elevation={1}>
         <Grid container alignItems="center" justifyContent="space-between">
           <Grid item>
-            <Typography variant="h4" sx={{ fontWeight: 600, color: "#2c3e50", display: "flex", alignItems: "center", gap: 1 }}>
-              <SchoolIcon sx={{ fontSize: 32 }} />
-              Student Timetable System
-            </Typography>
-            <Typography variant="body2" sx={{ color: "#7f8c8d", mt: 0.5 }}>
-              View and manage your weekly class schedule
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <School sx={{ fontSize: 32 }} />
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                  Student Dashboard
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  View your timetable and download PDFs
+                </Typography>
+              </Box>
+            </Box>
           </Grid>
           <Grid item>
             <Box sx={{ display: "flex", gap: 1 }}>
-              <Tooltip title="Print Timetable">
-                <IconButton onClick={handlePrint} sx={{ border: "1px solid #e0e0e0" }}>
-                  <PrintIcon />
+              <Tooltip title="Print">
+                <IconButton onClick={handlePrint} sx={{ color: "inherit" }}>
+                  <Print />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Download">
-                <IconButton sx={{ border: "1px solid #e0e0e0" }}>
-                  <DownloadIcon />
+              <Tooltip title="Download PDF">
+                <IconButton 
+                  onClick={downloadPDF} 
+                  disabled={!timetable || loading}
+                  sx={{ color: "inherit" }}
+                >
+                  <Download />
                 </IconButton>
               </Tooltip>
             </Box>
           </Grid>
         </Grid>
-      </HeaderSection>
+      </Header>
 
-      <ControlsCard>
+      {/* Controls */}
+      <Card>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                label="Week Starting Date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                variant="outlined"
-                size="small"
-                InputProps={{
-                  startAdornment: <CalendarTodayIcon sx={{ mr: 1, color: "#7f8c8d", fontSize: 20 }} />,
-                }}
-              />
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Course</InputLabel>
+                <Select
+                  value={course}
+                  onChange={(e) => setCourse(e.target.value)}
+                  label="Course"
+                >
+                  {courses.map((c) => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Semester</InputLabel>
+                <Select
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value)}
+                  label="Semester"
+                >
+                  {semesters.map((sem) => (
+                    <MenuItem key={sem} value={sem}>Sem {sem}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel>Section</InputLabel>
                 <Select
@@ -382,59 +447,56 @@ function StudentDashboard() {
                   onChange={(e) => setSection(e.target.value)}
                   label="Section"
                 >
-                  <MenuItem value=""><em>Select Section</em></MenuItem>
-                  {SECTIONS.map((sec) => (
-                    <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
+                  <MenuItem value=""><em>Select</em></MenuItem>
+                  {sections.map((sec) => (
+                    <MenuItem key={sec} value={sec}>Sec {sec}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                label="Start Date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                variant="outlined"
+                size="small"
+                InputProps={{
+                  startAdornment: <CalendarToday sx={{ mr: 1, fontSize: 20, color: "#666" }} />,
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
               <Button
                 variant="contained"
                 onClick={fetchTimetable}
-                disabled={loading}
+                disabled={loading || !section}
                 fullWidth
-                sx={{
-                  backgroundColor: "#2c3e50",
-                  "&:hover": { backgroundColor: "#34495e" },
-                  textTransform: "none",
-                  fontWeight: 600,
-                }}
-                startIcon={<RefreshIcon />}
+                startIcon={<Refresh />}
               >
-                {loading ? "Loading..." : "Load Timetable"}
+                {loading ? "Loading..." : "Load"}
               </Button>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
               <Button
                 variant="outlined"
                 onClick={toggleAvailableTeachers}
                 disabled={loading}
                 fullWidth
-                sx={{
-                  borderColor: "#2c3e50",
-                  color: "#2c3e50",
-                  textTransform: "none",
-                  fontWeight: 600,
-                  "&:hover": {
-                    borderColor: "#34495e",
-                    backgroundColor: "rgba(44, 62, 80, 0.04)",
-                  }
-                }}
-                startIcon={<PersonOutlineIcon />}
+                startIcon={<PersonOutline />}
               >
-                {showTeachers ? "Hide Teachers" : "View Teachers"}
+                {showTeachers ? "Hide" : "Teachers"}
               </Button>
             </Grid>
           </Grid>
         </CardContent>
-      </ControlsCard>
+      </Card>
 
       {message && (
         <Alert 
           severity={message.includes("Error") ? "error" : "info"} 
-          sx={{ mb: 2, borderRadius: "8px" }}
+          sx={{ mt: 2 }}
           onClose={() => setMessage("")}
         >
           {message}
@@ -442,26 +504,25 @@ function StudentDashboard() {
       )}
 
       {!timetable ? (
-        <Paper sx={{ p: 8, textAlign: "center", borderRadius: "8px" }}>
-          <CalendarTodayIcon sx={{ fontSize: 64, color: "#e0e0e0", mb: 2 }} />
-          <Typography variant="h6" sx={{ color: "#7f8c8d" }}>
+        <Paper sx={{ p: 8, textAlign: "center", mt: 3 }}>
+          <Typography variant="h6" color="text.secondary">
             Select a section and date to view the timetable
           </Typography>
         </Paper>
       ) : !Object.keys(timetable).length ? (
-        <Paper sx={{ p: 8, textAlign: "center", borderRadius: "8px" }}>
-          <Typography variant="h6" sx={{ color: "#7f8c8d" }}>
+        <Paper sx={{ p: 8, textAlign: "center", mt: 3 }}>
+          <Typography variant="h6" color="text.secondary">
             No timetable data available for this section
           </Typography>
         </Paper>
       ) : (
         <>
-          <TimetableContainer>
-            <Box sx={{ p: 2, backgroundColor: "#2c3e50", color: "#fff" }}>
-              <Typography variant="h5" sx={{ fontWeight: 600, textAlign: "center" }}>
-                Section {section} - Weekly Timetable
+          <TimetableContainer ref={timetableRef}>
+            <Box sx={{ p: 2, backgroundColor: "primary.main", color: "primary.contrastText" }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, textAlign: "center" }}>
+                {course} - Semester {semester} - Section {section}
               </Typography>
-              <Typography variant="body2" sx={{ textAlign: "center", opacity: 0.8, mt: 0.5 }}>
+              <Typography variant="body2" sx={{ textAlign: "center", opacity: 0.9 }}>
                 Week starting from {date}
               </Typography>
             </Box>
@@ -469,16 +530,12 @@ function StudentDashboard() {
             <StyledTable>
               <TableHead>
                 <TableRow>
-                  <TimeCell>
-                    <AccessTimeIcon sx={{ fontSize: 18, mb: 0.5 }} />
-                    <br />
-                    TIME
-                  </TimeCell>
+                  <TimeCell>Time</TimeCell>
                   {days.map((day) => (
                     <DayHeaderCell key={day}>
-                      <Typography sx={{ fontWeight: 600 }}>{day.toUpperCase()}</Typography>
+                      {day}
                       {weekDates[day] && (
-                        <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                        <Typography variant="caption" sx={{ display: "block", opacity: 0.8, mt: 0.5 }}>
                           {weekDates[day]}
                         </Typography>
                       )}
@@ -487,36 +544,40 @@ function StudentDashboard() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {displayTimeSlots.map((timeSlot) => {
-                  const isLunchSlot = timeSlot === "13:00-14:00";
-                  
+                {timeSlots.map((timeSlot) => {
+                  const hasContent = days.some(day => {
+                    const content = getSlotContent(day, timeSlot);
+                    return content && content.subject !== "Lunch";
+                  });
+
+                  if (!hasContent && (timeSlot === "13:00-14:00" || timeSlot === "14:00-15:00" || timeSlot === "15:00-16:00")) {
+                    return null;
+                  }
+
                   return (
                     <TableRow key={timeSlot}>
                       <TimeCell>{timeSlot}</TimeCell>
                       {days.map((day) => {
                         const slotContent = getSlotContent(day, timeSlot);
-                        
-                        if (isLunchSlot && slotContent) {
-                          return (
-                            <ClassCell key={`${day}-${timeSlot}`}>
-                              <LunchBox>LUNCH BREAK</LunchBox>
-                            </ClassCell>
-                          );
-                        }
-                        
                         return (
-                          <ClassCell key={`${day}-${timeSlot}`}>
-                            {slotContent && slotContent.subject !== "Lunch" ? (
-                              <SubjectBox bgColor={subjectColors[slotContent.subject]}>
-                                <SubjectCode>{slotContent.subject}</SubjectCode>
-                                <TeacherName>
-                                  {slotContent.teacher === "respective teacher" 
-                                    ? "Elective Faculty" 
-                                    : slotContent.teacher || "TBA"}
-                                </TeacherName>
-                              </SubjectBox>
+                          <ClassCell key={day}>
+                            {slotContent ? (
+                              slotContent.subject === "Lunch" ? (
+                                <LunchBox>🍽️ Lunch Break</LunchBox>
+                              ) : (
+                                <SubjectBox bgColor={subjectColors[slotContent.subject] || "#f0f0f0"}>
+                                  <SubjectCode>{slotContent.subject}</SubjectCode>
+                                  <TeacherName>{slotContent.teacher}</TeacherName>
+                                  {slotContent.room && (
+                                    <RoomNumber>
+                                      <LocationOn sx={{ fontSize: 12 }} />
+                                      {slotContent.room}
+                                    </RoomNumber>
+                                  )}
+                                </SubjectBox>
+                              )
                             ) : (
-                              <EmptySlot>–</EmptySlot>
+                              <EmptySlot>—</EmptySlot>
                             )}
                           </ClassCell>
                         );
@@ -527,10 +588,10 @@ function StudentDashboard() {
               </TableBody>
             </StyledTable>
 
-            <Box sx={{ p: 2, backgroundColor: "#f8f9fa", borderTop: "1px solid #e0e0e0" }}>
+            <Box sx={{ p: 2, backgroundColor: "#fafafa", borderTop: "1px solid #e0e0e0" }}>
               <Grid container spacing={1}>
                 <Grid item xs={12}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: "#2c3e50" }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
                     Subject Codes:
                   </Typography>
                 </Grid>
@@ -541,10 +602,8 @@ function StudentDashboard() {
                       size="small"
                       sx={{
                         backgroundColor: color,
-                        color: "#2c3e50",
                         fontWeight: 600,
                         fontSize: "0.75rem",
-                        border: "1px solid #e0e0e0",
                       }}
                     />
                   </Grid>
@@ -554,17 +613,17 @@ function StudentDashboard() {
           </TimetableContainer>
 
           {showTeachers && availableTeachers.length > 0 && (
-            <Card sx={{ mt: 3, borderRadius: "8px", border: "1px solid #e0e0e0" }}>
+            <Card sx={{ mt: 3 }}>
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ color: "#2c3e50", fontWeight: 600 }}>
+                <Typography variant="h6" gutterBottom>
                   Available Teachers for Section {section}
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600, color: "#2c3e50" }}>Teacher Name</TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: "#2c3e50" }}>Sections Taught</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Teacher Name</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Sections Taught</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
