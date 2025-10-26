@@ -27,7 +27,7 @@ import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -70,6 +70,13 @@ function RoomConflicts() {
 
   useEffect(() => {
     fetchData();
+    
+    
+    const intervalId = setInterval(() => {
+      fetchData();
+    }, 10000);
+    
+    return () => clearInterval(intervalId);
   }, []);
 
   const fetchData = async () => {

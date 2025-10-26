@@ -27,7 +27,7 @@ import {
 import { styled } from "@mui/system";
 import { Refresh, School, Assignment } from "@mui/icons-material";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(3),
@@ -68,7 +68,7 @@ function TeacherAssignmentPage() {
   const [sections, setSections] = useState([]);
   const [subjects, setSubjects] = useState([]);
 
-  // Load courses on mount
+  
   useEffect(() => {
     const loadCourses = async () => {
       try {
@@ -81,7 +81,7 @@ function TeacherAssignmentPage() {
     loadCourses();
   }, []);
 
-  // Load semesters when course changes
+  
   useEffect(() => {
     if (course) {
       const loadSemesters = async () => {
@@ -96,7 +96,7 @@ function TeacherAssignmentPage() {
     }
   }, [course]);
 
-  // Load sections when course changes
+  
   useEffect(() => {
     if (course) {
       const loadSections = async () => {
@@ -111,7 +111,7 @@ function TeacherAssignmentPage() {
     }
   }, [course]);
 
-  // Load subjects when course or semester changes
+  
   useEffect(() => {
     if (course && semester) {
       const loadSubjects = async () => {
@@ -126,10 +126,17 @@ function TeacherAssignmentPage() {
     }
   }, [course, semester]);
 
-  // Fetch teacher data
+  
   useEffect(() => {
     if (course && semester) {
       fetchTeacherData();
+      
+      
+      const intervalId = setInterval(() => {
+        fetchTeacherData();
+      }, 10000);
+      
+      return () => clearInterval(intervalId);
     }
   }, [course, semester]);
 
@@ -145,7 +152,7 @@ function TeacherAssignmentPage() {
       const teacherSubjectSections = subjectSectionsResponse.data || {};
 
       const teacherList = teachersList.map((teacher) => {
-        // Get subjects this teacher can teach from their courseSubjects
+        
         const eligibleSubjects = [];
         if (teacher.courseSubjects && teacher.courseSubjects[course]) {
           const semKey = semester.toString();
@@ -176,7 +183,7 @@ function TeacherAssignmentPage() {
     setLoading(true);
     setMessage("Assigning subject and sections...");
     try {
-      // Update local state immediately for better UX
+      
       setTeachers((prev) =>
         prev.map((teacher) =>
           teacher.name === teacherName
@@ -191,21 +198,21 @@ function TeacherAssignmentPage() {
         )
       );
 
-      // Send to backend
+      
       await axios.post(`${API_URL}/assign_teacher_subject_sections`, {
         teacher_id: teacherName,
         subject: subject,
         sections: selectedSections,
       });
       
-      // Force sync teachers after assignment
+      
       await axios.post(`${API_URL}/sync_teachers`);
       
       setMessage(`✅ Assigned ${subject} to ${teacherName} for sections: ${selectedSections.join(", ")}`);
     } catch (error) {
       setMessage("Error assigning: " + (error.response?.data?.detail || error.message));
       console.error("Assignment error:", error);
-      // Revert on error
+      
       fetchTeacherData();
     } finally {
       setLoading(false);

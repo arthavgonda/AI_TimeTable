@@ -13,10 +13,12 @@ import {
   Paper,
   Box,
   Alert,
+  TextField,
 } from "@mui/material";
 import { styled } from "@mui/system";
+import SearchIcon from "@mui/icons-material/Search";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -42,12 +44,32 @@ const StyledTable = styled(Table)(({ theme }) => ({
 
 function TeacherAvailabilityPage() {
   const [teachers, setTeachers] = useState([]);
+  const [filteredTeachers, setFilteredTeachers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchTeacherAvailability();
+    
+    
+    const intervalId = setInterval(() => {
+      fetchTeacherAvailability();
+    }, 30000);
+    
+    return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredTeachers(teachers);
+    } else {
+      const filtered = teachers.filter((teacher) =>
+        teacher.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredTeachers(filtered);
+    }
+  }, [searchQuery, teachers]);
 
   const fetchTeacherAvailability = async () => {
     setLoading(true);
@@ -59,6 +81,7 @@ function TeacherAvailabilityPage() {
         available: isAvailable,
       }));
       setTeachers(teacherList);
+      setFilteredTeachers(teacherList);
       setMessage("Teacher availability loaded successfully!");
     } catch (error) {
       setMessage("Error loading teacher availability: " + (error.response?.data?.error || error.message));
@@ -110,6 +133,22 @@ function TeacherAvailabilityPage() {
           </Alert>
         )}
 
+        <Box sx={{ mb: 3 }}>
+          <TextField
+            fullWidth
+            placeholder="Search teachers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: "#7f8c8d" }} />,
+            }}
+            sx={{
+              backgroundColor: "#fff",
+              borderRadius: "8px",
+            }}
+          />
+        </Box>
+
         <StyledTable>
           <TableHead>
             <TableRow>
@@ -118,7 +157,7 @@ function TeacherAvailabilityPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {teachers.map((teacher) => (
+            {filteredTeachers.map((teacher) => (
               <TableRow key={teacher.name} sx={{ padding: 1 }}>
                 <TableCell sx={{ padding: 2 }}>{teacher.name}</TableCell>
                 <TableCell sx={{ padding: 2 }}>

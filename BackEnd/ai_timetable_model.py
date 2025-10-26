@@ -61,11 +61,11 @@ def is_teacher_available_at_slot(teacher, day, time_slot, teacher_preferences):
     
     prefs = teacher_preferences[teacher]
     
-    # Check unavailable days
+    
     if prefs.get("unavailable_days") and day in prefs["unavailable_days"]:
         return False
     
-    # Check time window
+    
     earliest = prefs.get("earliest_time")
     latest = prefs.get("latest_time")
     
@@ -84,56 +84,56 @@ def allocate_room(section, subject, time_slot, classrooms, room_assignments, sec
     if not classrooms:
         return None
     
-    # Default section sizes (estimate)
+    
     if not section_sizes:
         section_sizes = {}
     
-    # Estimate section size (default 60 for regular sections, 30 for specialized)
+    
     section_size = section_sizes.get(section, 60 if section in ["A", "B", "C", "D", "E", "F", "G", "H"] else 30)
     
-    # Determine room type needed
+    
     is_lab = subject.startswith("PCS")
     room_type_needed = "lab" if is_lab else "lecture"
     
-    # Find available rooms - prioritize subject-specific rooms
+    
     available_rooms = []
     subject_specific_rooms = []
     
     for room in classrooms:
-        # Check if room type matches
+        
         if room["room_type"] != room_type_needed:
             continue
         
-        # Check if room has sufficient capacity
+        
         if room["capacity"] < section_size:
             continue
         
-        # Check if room is already occupied at this time
+        
         room_key = f"{room['room_number']}"
         if room_key not in room_assignments:
             room_assignments[room_key] = {}
         
-        # The room_assignments structure: {room_number: {day: {time_slot: section}}}
-        # We'll check later when we know the day
         
-        # Check if room has specific subject designation
+        
+        
+        
         if "subjects" in room and room["subjects"] and len(room["subjects"]) > 0:
-            # This room is designated for specific subjects
+            
             if subject in room["subjects"]:
-                # This subject is designated for this room - high priority!
+                
                 subject_specific_rooms.append(room)
-            # else: skip this room, it's for other subjects
+            
         else:
-            # General purpose room - can be used for any subject
+            
             available_rooms.append(room)
     
-    # Prioritize subject-specific rooms first, then general purpose rooms
+    
     priority_list = subject_specific_rooms + available_rooms
     
     if not priority_list:
         return None
     
-    # Return the first suitable room from priority list
+    
     return priority_list[0]["room_number"]
 
 def is_room_available(room_number, day, time_slot, room_assignments):
@@ -145,6 +145,43 @@ def is_room_available(room_number, day, time_slot, room_assignments):
     if time_slot not in room_assignments[room_number][day]:
         return True
     return False
+
+def get_teacher_daily_lecture_count(timetable, teacher, day):
+    """Count how many lectures a teacher has on a specific day"""
+    count = 0
+    for section in timetable:
+        if day in timetable[section]:
+            for time_slot in timetable[section][day]:
+                if timetable[section][day][time_slot].get("teacher") == teacher:
+                    count += 1
+    return count
+
+def get_teacher_weekly_lecture_count(timetable, teacher):
+    """Count total lectures a teacher has in the week"""
+    count = 0
+    for section in timetable:
+        for day in timetable[section]:
+            for time_slot in timetable[section][day]:
+                if timetable[section][day][time_slot].get("teacher") == teacher:
+                    count += 1
+    return count
+
+def check_lecture_limits(timetable, teacher, day, is_two_hour=False):
+    """Check if assigning this lecture violates lecture limits"""
+    daily_count = get_teacher_daily_lecture_count(timetable, teacher, day)
+    weekly_count = get_teacher_weekly_lecture_count(timetable, teacher)
+    
+    
+    max_daily = 5 if weekly_count < 15 and daily_count < 4 else 4
+    if daily_count + (2 if is_two_hour else 1) > max_daily:
+        return False
+    
+    
+    weekly_addition = 2 if is_two_hour else 1
+    if weekly_count + weekly_addition > 15:
+        return False
+    
+    return True
 
 def check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=None, teacher_lecture_limits=None, teacher_availability=None, teacher_preferences=None):
     if teacher_subject_sections is None:
@@ -159,8 +196,12 @@ def check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is
     if teacher in teacher_availability and not teacher_availability.get(teacher, True):
         return False
     
-    # Check teacher preferences
+    
     if not is_teacher_available_at_slot(teacher, day, time_slot, teacher_preferences):
+        return False
+    
+    
+    if not check_lecture_limits(timetable, teacher, day, is_two_hour):
         return False
     
     slot_index = data["time_slots"].index(time_slot)
@@ -214,21 +255,21 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
     if not classrooms:
         classrooms = []
     
-    # Get subjects and sections dynamically based on course and semester
+    
     from utils import get_subjects_for_semester, get_sections_for_course
     subjects = get_subjects_for_semester(course, semester)
     sections = get_sections_for_course(course)
     
     if not subjects:
         print(f"Warning: No subjects found for {course} semester {semester}")
-        subjects = data["subjects"]  # Fallback to default
+        subjects = data["subjects"]  
     
     if not sections:
         print(f"Warning: No sections found for {course}")
-        sections = data["sections"]  # Fallback to default
+        sections = data["sections"]  
     
     timetable = {}
-    room_assignments = {}  # Track room allocations {room_number: {day: {time_slot: section}}}
+    room_assignments = {}  
     
     if start_date:
         start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -246,13 +287,13 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
     lunch_slot = "13:00-14:00"
     elective_days = random.sample(days, 2)
     
-    # Dynamically determine lab subjects (typically PCS subjects)
+    
     lab_subjects = [s for s in subjects if s.startswith("PCS") or "lab" in s.lower() or "practical" in s.lower()]
     
-    # Core subjects are all except lab, elective, and project
+    
     core_subjects_all = [s for s in subjects if s not in lab_subjects and s != "Elective" and s != "Project"]
     
-    # Special subjects for specific sections (maintain for BTech compatibility)
+    
     exclusive_subjects = {
         "DS1": [s for s in subjects if "DP900" in s or "data" in s.lower()],
         "DS2": [s for s in subjects if "DP900" in s or "data" in s.lower()],
@@ -262,7 +303,7 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
         "AI": [s for s in subjects if "AI900" in s or "ai" in s.lower()]
     }
     
-    # Clean up exclusive subjects - only keep sections that have exclusive subjects
+    
     exclusive_subjects = {k: v for k, v in exclusive_subjects.items() if v and k in sections}
     
     morning_slots = ["8:00-9:00", "9:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00"]
@@ -278,13 +319,13 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
             if available_teachers:
                 teacher = random.choice(available_teachers)
                 if check_slot_conflict(timetable, section, elective_day, elective_slots[0], teacher, subject="Elective", is_two_hour=True, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability, teacher_preferences=teacher_preferences):
-                    # Allocate room for elective
+                    
                     room = None
                     if classrooms:
                         for classroom in classrooms:
                             if classroom["room_type"] == "lecture" and is_room_available(classroom["room_number"], elective_day, elective_slots[0], room_assignments):
                                 room = classroom["room_number"]
-                                # Mark room as occupied
+                                
                                 if room not in room_assignments:
                                     room_assignments[room] = {}
                                 if elective_day not in room_assignments[room]:
@@ -295,8 +336,6 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                     
                     timetable[section][elective_day][elective_slots[0]] = {"subject": "Elective", "teacher": "respective teacher", "room": room}
                     timetable[section][elective_day][elective_slots[1]] = {"subject": "Elective", "teacher": "respective teacher", "room": room}
-
-    teacher_lecture_count = {t: 0 for t in data["teachers"]}
     
     for section in sections:
         base_subjects = core_subjects_all.copy()
@@ -330,19 +369,18 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                                 and t in teacher_subject_sections 
                                 and lab_subject in teacher_subject_sections[t] 
                                 and section in teacher_subject_sections[t][lab_subject]
-                                and (teacher_lecture_count.get(t, 0) + 2) <= (teacher_lecture_limits.get(t, float('inf')))
                             ]
                             
                             if valid_teachers:
                                 teacher = random.choice(valid_teachers)
                                 if check_slot_conflict(timetable, section, day, time_slot, teacher, lab_subject, is_two_hour=True, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability, teacher_preferences=teacher_preferences):
-                                    # Allocate lab room
+                                    
                                     room = None
                                     if classrooms:
                                         for classroom in classrooms:
                                             if classroom["room_type"] == "lab" and is_room_available(classroom["room_number"], day, time_slot, room_assignments):
                                                 room = classroom["room_number"]
-                                                # Mark room as occupied
+                                                
                                                 if room not in room_assignments:
                                                     room_assignments[room] = {}
                                                 if day not in room_assignments[room]:
@@ -355,7 +393,6 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                                     timetable[section][day][next_slot] = {"subject": lab_subject, "teacher": teacher, "room": room}
                                     occurrences_scheduled += 1
                                     lab_occurrences[lab_subject] += 1
-                                    teacher_lecture_count[teacher] += 2
                                     if teacher not in teacher_sections_taught:
                                         teacher_sections_taught[teacher] = []
                                     if section not in teacher_sections_taught[teacher]:
@@ -383,19 +420,18 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                         and t in teacher_subject_sections 
                         and subject in teacher_subject_sections[t] 
                         and section in teacher_subject_sections[t][subject]
-                        and (teacher_lecture_count.get(t, 0) + 1) <= (teacher_lecture_limits.get(t, float('inf')))
                     ]
                     
                     if valid_teachers:
                         teacher = random.choice(valid_teachers)
                         if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability, teacher_preferences=teacher_preferences):
-                            # Allocate lecture room
+                            
                             room = None
                             if classrooms:
                                 for classroom in classrooms:
                                     if classroom["room_type"] == "lecture" and is_room_available(classroom["room_number"], day, time_slot, room_assignments):
                                         room = classroom["room_number"]
-                                        # Mark room as occupied
+                                        
                                         if room not in room_assignments:
                                             room_assignments[room] = {}
                                         if day not in room_assignments[room]:
@@ -404,7 +440,6 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                                         break
                             
                             timetable[section][day][time_slot] = {"subject": subject, "teacher": teacher, "room": room}
-                            teacher_lecture_count[teacher] += 1
                             if teacher not in teacher_sections_taught:
                                 teacher_sections_taught[teacher] = []
                             if section not in teacher_sections_taught[teacher]:
@@ -436,19 +471,18 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                             and t in teacher_subject_sections 
                             and subject in teacher_subject_sections[t] 
                             and section in teacher_subject_sections[t][subject]
-                            and (teacher_lecture_count.get(t, 0) + 1) <= (teacher_lecture_limits.get(t, float('inf')))
                         ]
                         
                         if valid_teachers:
                             teacher = random.choice(valid_teachers)
                             if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability, teacher_preferences=teacher_preferences):
-                                # Allocate lecture room
+                                
                                 room = None
                                 if classrooms:
                                     for classroom in classrooms:
                                         if classroom["room_type"] == "lecture" and is_room_available(classroom["room_number"], day, time_slot, room_assignments):
                                             room = classroom["room_number"]
-                                            # Mark room as occupied
+                                            
                                             if room not in room_assignments:
                                                 room_assignments[room] = {}
                                             if day not in room_assignments[room]:
@@ -457,69 +491,12 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
                                             break
                                 
                                 timetable[section][day][time_slot] = {"subject": subject, "teacher": teacher, "room": room}
-                                teacher_lecture_count[teacher] += 1
                                 if teacher not in teacher_sections_taught:
                                     teacher_sections_taught[teacher] = []
                                 if section not in teacher_sections_taught[teacher]:
                                     teacher_sections_taught[teacher].append(section)
 
-    for teacher, limit in teacher_lecture_limits.items():
-        if not teacher_availability.get(teacher, True):
-            continue
-        
-        if limit is not None and limit > 0: 
-            current_lectures = teacher_lecture_count.get(teacher, 0)
-            if current_lectures != limit:
-                if current_lectures < limit:
-                    for section in sections:
-                        for day in days:
-                            for time_slot in data["time_slots"]:
-                                if time_slot == lunch_slot or (day in elective_days and time_slot in elective_slots):
-                                    continue
-                                if timetable[section][day].get(time_slot, {}).get("teacher") is None:
-                                    subject = random.choice(core_subjects_all + lab_subjects + (exclusive_subjects.get(section, [])))
-                                    if teacher in subject_teacher_mapping[subject] and teacher in teacher_subject_sections and subject in teacher_subject_sections[teacher] and section in teacher_subject_sections[teacher][subject]:
-                                        if check_slot_conflict(timetable, section, day, time_slot, teacher, subject, is_two_hour=False, teacher_subject_sections=teacher_subject_sections, teacher_lecture_limits=teacher_lecture_limits, teacher_availability=teacher_availability, teacher_preferences=teacher_preferences):
-                                            # Allocate room
-                                            room = None
-                                            room_type_needed = "lab" if subject.startswith("PCS") else "lecture"
-                                            if classrooms:
-                                                for classroom in classrooms:
-                                                    if classroom["room_type"] == room_type_needed and is_room_available(classroom["room_number"], day, time_slot, room_assignments):
-                                                        room = classroom["room_number"]
-                                                        if room not in room_assignments:
-                                                            room_assignments[room] = {}
-                                                        if day not in room_assignments[room]:
-                                                            room_assignments[room][day] = {}
-                                                        room_assignments[room][day][time_slot] = section
-                                                        break
-                                            
-                                            timetable[section][day][time_slot] = {"subject": subject, "teacher": teacher, "room": room}
-                                            teacher_lecture_count[teacher] += 1
-                                            if teacher_lecture_count[teacher] == limit:
-                                                break
-                                if teacher_lecture_count.get(teacher, 0) >= limit:
-                                    break
-                            if teacher_lecture_count.get(teacher, 0) >= limit:
-                                break
-                        if teacher_lecture_count.get(teacher, 0) >= limit:
-                            break
-                elif current_lectures > limit:
-                    excess = current_lectures - limit
-                    for section in sections:
-                        for day in days:
-                            for time_slot in data["time_slots"]:
-                                if timetable[section][day].get(time_slot, {}).get("teacher") == teacher and excess > 0:
-                                    del timetable[section][day][time_slot]
-                                    teacher_lecture_count[teacher] -= 1
-                                    excess -= 1
-                                    if excess == 0:
-                                        break
-                            if excess == 0:
-                                break
-                        if excess == 0:
-                            break
-
+    
     for teacher in list(teacher_sections_taught.keys()):
         current_sections = set()
         for section in sections:
@@ -530,10 +507,18 @@ def generate_timetable(start_date=None, teacher_subject_sections=None, teacher_s
         else:
             del teacher_sections_taught[teacher]
 
+    
     print("Final teacher_sections_taught:", teacher_sections_taught)
     print("Final teacher_subject_sections:", teacher_subject_sections)
     print("Final teacher_lecture_limits:", teacher_lecture_limits)
-    print("Final lecture counts:", teacher_lecture_count)
+    
+    
+    for teacher in data["teachers"]:
+        daily_counts = {}
+        for day in days:
+            daily_counts[day] = get_teacher_daily_lecture_count(timetable, teacher, day)
+        weekly_count = get_teacher_weekly_lecture_count(timetable, teacher)
+        print(f"{teacher}: {weekly_count} total lectures, daily: {daily_counts}")
     return timetable
 
 if __name__ == "__main__":

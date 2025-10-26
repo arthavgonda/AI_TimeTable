@@ -1,17 +1,17 @@
 import { createTheme } from '@mui/material/styles';
 
-// Minimal color palette - consistent throughout the app
+
 export const minimalTheme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#2c3e50', // Dark blue-gray
+      main: '#2c3e50', 
       light: '#546e7a',
       dark: '#1a252f',
       contrastText: '#fff',
     },
     secondary: {
-      main: '#424242', // Neutral gray
+      main: '#424242', 
       light: '#6d6d6d',
       dark: '#1b1b1b',
       contrastText: '#fff',
@@ -50,7 +50,7 @@ export const minimalTheme = createTheme({
     },
   },
   shape: {
-    borderRadius: 8, // Consistent rounded corners
+    borderRadius: 8, 
   },
   shadows: [
     'none',

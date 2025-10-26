@@ -38,9 +38,9 @@ import {
   Refresh,
 } from "@mui/icons-material";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
-// Minimal styled components
+
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(3),
   minHeight: "100vh",
@@ -136,7 +136,7 @@ const LunchBox = styled(Box)({
   fontWeight: 600,
 });
 
-// Subject colors - clean and minimal
+
 const subjectColors = {
   "TCS-408": "#e3f2fd",
   "TCS-402": "#f3e5f5",
@@ -177,7 +177,7 @@ function StudentDashboard() {
   const [weekDates, setWeekDates] = useState({});
   const timetableRef = useRef(null);
 
-  // Load courses on component mount
+  
   useEffect(() => {
     const loadCourses = async () => {
       try {
@@ -190,7 +190,7 @@ function StudentDashboard() {
     loadCourses();
   }, []);
 
-  // Load semesters when course changes
+  
   useEffect(() => {
     if (course) {
       const loadSemesters = async () => {
@@ -205,14 +205,14 @@ function StudentDashboard() {
     }
   }, [course]);
 
-  // Load sections when course changes
+  
   useEffect(() => {
     if (course) {
       const loadSections = async () => {
         try {
           const response = await axios.get(`${API_URL}/sections/${course}`);
           setSections(response.data.sections || []);
-          setSection(""); // Reset section when course changes
+          setSection(""); 
         } catch (error) {
           console.error("Error loading sections:", error);
         }
@@ -272,6 +272,20 @@ function StudentDashboard() {
       setLoading(false);
     }
   };
+
+  
+  useEffect(() => {
+    if (section) {
+      fetchTimetable();
+      
+      
+      const intervalId = setInterval(() => {
+        fetchTimetable();
+      }, 30000);
+      
+      return () => clearInterval(intervalId);
+    }
+  }, [section, date]);
 
   const toggleAvailableTeachers = async () => {
     if (showTeachers) {

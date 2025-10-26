@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import {
   Container,
@@ -25,7 +25,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import PersonIcon from "@mui/icons-material/Person";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -59,17 +59,28 @@ const StyledTable = styled(Table)(({ theme }) => ({
 }));
 
 const HeatmapCell = styled(Box)(({ intensity }) => {
-  let backgroundColor = "#e8f5e9";
-  if (intensity > 8) backgroundColor = "#c62828";
-  else if (intensity > 6) backgroundColor = "#e74c3c";
-  else if (intensity > 4) backgroundColor = "#f39c12";
-  else if (intensity > 2) backgroundColor = "#27ae60";
+  let backgroundColor = "#e0e0e0"; 
+  let textColor = "#2c3e50";
+  
+  if (intensity === 0) {
+    backgroundColor = "#e0e0e0"; 
+    textColor = "#2c3e50";
+  } else if (intensity >= 1 && intensity <= 2) {
+    backgroundColor = "#81c784"; 
+    textColor = "#1a1a1a";
+  } else if (intensity >= 3 && intensity <= 4) {
+    backgroundColor = "#ff9800"; 
+    textColor = "#1a1a1a";
+  } else if (intensity >= 5) {
+    backgroundColor = "#e53935"; 
+    textColor = "#ffffff";
+  }
   
   return {
     padding: "8px",
     textAlign: "center",
     backgroundColor,
-    color: intensity > 4 ? "#fff" : "#2c3e50",
+    color: textColor,
     fontWeight: 600,
     borderRadius: "4px",
     minHeight: "40px",
@@ -99,15 +110,36 @@ function TeacherLoadHeatmap() {
   const [teacherPreferences, setTeacherPreferences] = useState({});
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const isFetchingRef = useRef(false);
 
   useEffect(() => {
     fetchData();
-  }, []);
+    
+    
+    const intervalId = setInterval(() => {
+      fetchData();
+    }, 10000);
+    
+    return () => clearInterval(intervalId);
+  }, []); 
 
   const fetchData = async () => {
-    setLoading(true);
+    
+    if (isFetchingRef.current) {
+      console.log("Fetch already in progress, skipping...");
+      return;
+    }
+    
+    isFetchingRef.current = true;
+    
+    
+    const isInitialLoad = !timetable;
+    if (isInitialLoad) {
+      setLoading(true);
+    }
+    
     try {
-      // Get latest timetable
+      
       const today = new Date();
       const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
       
@@ -117,25 +149,59 @@ function TeacherLoadHeatmap() {
         axios.get(`${API_URL}/all_teacher_preferences`),
       ]);
 
-      setTimetable(timetableResponse.data.timetable || {});
-      setTeacherAvailability(availabilityResponse.data || {});
-      setTeacherPreferences(preferencesResponse.data || {});
+      const timetableData = timetableResponse.data.timetable || {};
+      const availabilityData = availabilityResponse.data || {};
+      const preferencesData = preferencesResponse.data || {};
+
       
-      // Calculate teacher load
-      calculateTeacherLoad(timetableResponse.data.timetable || {});
-      setMessage("");
+      if (Object.keys(availabilityData).length > 0) {
+        
+        const calculatedLoad = calculateTeacherLoadSync(timetableData, availabilityData);
+        
+        
+        setTimetable(timetableData);
+        setTeacherAvailability(availabilityData);
+        setTeacherPreferences(preferencesData);
+        setTeacherLoad(calculatedLoad);
+        
+        if (isInitialLoad) {
+          setMessage("");
+        }
+      }
     } catch (error) {
       setMessage("Error fetching data: " + (error.response?.data?.detail || error.message));
+      console.error("Fetch error:", error);
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        setLoading(false);
+      }
+      isFetchingRef.current = false;
     }
   };
 
-  const calculateTeacherLoad = (timetableData) => {
+  
+  const calculateTeacherLoadSync = (timetableData, availabilityData) => {
     const load = {};
     
-    // Initialize structure for each teacher
-    Object.keys(teacherAvailability).forEach(teacher => {
+    
+    const allTeachers = new Set();
+    
+    
+    Object.keys(availabilityData).forEach(teacher => allTeachers.add(teacher));
+    
+    
+    Object.values(timetableData).forEach(sectionData => {
+      Object.values(sectionData).forEach(dayData => {
+        Object.values(dayData).forEach(slotData => {
+          if (slotData.teacher && slotData.teacher !== "respective teacher") {
+            allTeachers.add(slotData.teacher);
+          }
+        });
+      });
+    });
+    
+    
+    allTeachers.forEach(teacher => {
       load[teacher] = {
         total: 0,
         byDay: {},
@@ -154,7 +220,7 @@ function TeacherLoadHeatmap() {
       });
     });
 
-    // Count lectures
+    
     Object.entries(timetableData).forEach(([section, days]) => {
       Object.entries(days).forEach(([day, slots]) => {
         Object.entries(slots).forEach(([timeSlot, content]) => {
@@ -169,14 +235,14 @@ function TeacherLoadHeatmap() {
       });
     });
 
-    setTeacherLoad(load);
+    return load;
   };
 
   const getLoadColor = (count) => {
     if (count === 0) return "#e0e0e0";
-    if (count <= 2) return "#27ae60";
-    if (count <= 4) return "#f39c12";
-    return "#e74c3c";
+    if (count <= 2) return "#81c784";
+    if (count <= 4) return "#ff9800";
+    return "#e53935";
   };
 
   const getAvailabilityStatus = (teacher) => {
@@ -258,7 +324,7 @@ function TeacherLoadHeatmap() {
                 Total Teachers
               </Typography>
               <Typography variant="h3" sx={{ fontWeight: 700, color: "#3498db", mt: 1 }}>
-                {Object.keys(teacherLoad).length}
+                {Object.keys(teacherAvailability).length || Object.keys(teacherLoad).length}
               </Typography>
             </CardContent>
           </StyledCard>
@@ -305,9 +371,10 @@ function TeacherLoadHeatmap() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {Object.entries(teacherLoad)
-                .sort((a, b) => b[1].total - a[1].total)
-                .map(([teacher, load]) => (
+              {Object.entries(teacherLoad).length > 0 ? (
+                Object.entries(teacherLoad)
+                  .sort((a, b) => b[1].total - a[1].total)
+                  .map(([teacher, load]) => (
                   <TableRow key={teacher}>
                     <TableCell>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -359,7 +426,16 @@ function TeacherLoadHeatmap() {
                       </Box>
                     </TableCell>
                   </TableRow>
-                ))}
+                  ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
+                    <Typography variant="body2" sx={{ color: "#7f8c8d" }}>
+                      No teacher data available
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </StyledTable>
         </CardContent>
@@ -372,7 +448,7 @@ function TeacherLoadHeatmap() {
             Weekly Load Heatmap (Top 10 Teachers)
           </Typography>
           <Typography variant="caption" sx={{ color: "#7f8c8d", mb: 2, display: "block" }}>
-            Number of concurrent classes per time slot
+            Total number of classes per day
           </Typography>
           <Box sx={{ overflowX: "auto" }}>
             <Table size="small">
@@ -416,10 +492,10 @@ function TeacherLoadHeatmap() {
               Color Legend:
             </Typography>
             <Box sx={{ display: "flex", gap: 2, mt: 1, flexWrap: "wrap" }}>
-              <Chip label="0 classes" size="small" sx={{ backgroundColor: "#e0e0e0" }} />
-              <Chip label="1-2 classes" size="small" sx={{ backgroundColor: "#27ae60", color: "#fff" }} />
-              <Chip label="3-4 classes" size="small" sx={{ backgroundColor: "#f39c12", color: "#fff" }} />
-              <Chip label="5+ classes" size="small" sx={{ backgroundColor: "#e74c3c", color: "#fff" }} />
+              <Chip label="0 classes" size="small" sx={{ backgroundColor: "#e0e0e0", color: "#2c3e50" }} />
+              <Chip label="1-2 classes" size="small" sx={{ backgroundColor: "#81c784", color: "#1a1a1a" }} />
+              <Chip label="3-4 classes" size="small" sx={{ backgroundColor: "#ff9800", color: "#1a1a1a" }} />
+              <Chip label="5+ classes" size="small" sx={{ backgroundColor: "#e53935", color: "#ffffff" }} />
             </Box>
           </Box>
         </CardContent>

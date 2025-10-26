@@ -40,6 +40,8 @@ import {
   Collapse,
   ListItemButton,
   Badge,
+  LinearProgress,
+  CircularProgress,
 } from "@mui/material";
 import { styled } from "@mui/system";
 import EditIcon from "@mui/icons-material/Edit";
@@ -69,7 +71,7 @@ import ClassIcon from '@mui/icons-material/Class';
 import InsightsIcon from '@mui/icons-material/Insights';
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
 const SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "ARQ", "DS1", "DS2", "ML1", "ML2", "Cyber", "AI"];
 const SUBJECTS = [
@@ -176,7 +178,7 @@ const CategoryDivider = styled(Divider)(({ theme }) => ({
   backgroundColor: "rgba(255,255,255,0.1)",
 }));
 
-// Timetable specific styles
+
 const TimetableContainer = styled(Paper)(({ theme }) => ({
   borderRadius: "8px",
   overflow: "hidden",
@@ -280,7 +282,7 @@ const LunchBox = styled(Box)(({ theme }) => ({
   fontSize: "0.9rem",
 }));
 
-// Professional color scheme for subjects
+
 const subjectColors = {
   "TCS-408": "#e3f2fd",
   "TCS-402": "#f3e5f5",
@@ -325,19 +327,25 @@ function AdminDashboard() {
   const [weekDates, setWeekDates] = useState({});
   const navigate = useNavigate();
   
-  // Collapsible menu state
+  
   const [openTeachers, setOpenTeachers] = useState(false);
   const [openScheduling, setOpenScheduling] = useState(false);
   const [openClassrooms, setOpenClassrooms] = useState(false);
   const [openAnalytics, setOpenAnalytics] = useState(false);
   
-  // Download dialog state
+  
   const [openDownloadDialog, setOpenDownloadDialog] = useState(false);
-  const [downloadType, setDownloadType] = useState("all"); // "all" or "specific"
+  const [downloadType, setDownloadType] = useState("all"); 
   const [downloadCourse, setDownloadCourse] = useState("BTech");
   const [downloadSemester, setDownloadSemester] = useState(4);
   const [downloadSection, setDownloadSection] = useState("");
   const timetableRef = useRef(null);
+  
+  
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
+  const [countdown, setCountdown] = useState(10);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const countdownIntervalRef = useRef(null);
 
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const timeSlots = [
@@ -414,7 +422,7 @@ function AdminDashboard() {
     return timeSlots.filter(slot => slotsWithContent.has(slot));
   };
 
-  // Load courses on mount
+  
   useEffect(() => {
     const loadCourses = async () => {
       try {
@@ -427,7 +435,7 @@ function AdminDashboard() {
     loadCourses();
   }, []);
 
-  // Load semesters when course changes
+  
   useEffect(() => {
     if (course) {
       const loadSemesters = async () => {
@@ -442,7 +450,7 @@ function AdminDashboard() {
     }
   }, [course]);
 
-  // Load sections when course changes
+  
   useEffect(() => {
     if (course) {
       const loadSections = async () => {
@@ -459,7 +467,10 @@ function AdminDashboard() {
 
   useEffect(() => {
     const fetchAllData = async () => {
-      setLoading(true);
+      
+      if (refreshTrigger === 0) {
+        setLoading(true);
+      }
       try {
         const [timetableResponse, availabilityResponse] = await Promise.all([
           axios.get(`${API_URL}/timetable/${parseDate(date)}`),
@@ -472,15 +483,28 @@ function AdminDashboard() {
           setSelectedSection(Object.keys(timetableResponse.data.timetable)[0]);
         }
         setTeacherAvailability(availabilityResponse.data);
-        setMessage("");
+        if (refreshTrigger === 0) {
+          setMessage("");
+        }
       } catch (error) {
         setMessage("Error refreshing data: " + (error.response?.data?.error || error.message));
         console.error("Error fetching data:", error);
       } finally {
-        setLoading(false);
+        if (refreshTrigger === 0) {
+          setLoading(false);
+        }
       }
     };
     fetchAllData();
+    
+    
+    const intervalId = setInterval(() => {
+      const newTrigger = refreshTrigger + 1;
+      setRefreshTrigger(newTrigger);
+      fetchAllData();
+    }, 30000);
+    
+    return () => clearInterval(intervalId);
   }, [date, refreshTrigger]);
 
   const fetchTimetable = async () => {
@@ -504,7 +528,38 @@ function AdminDashboard() {
     }
   };
 
-  const generateTimetable = async () => {
+  const handleGenerateClick = () => {
+    setOpenConfirmDialog(true);
+    setCountdown(10);
+    setIsGenerating(false);
+  };
+
+  const handleConfirmGenerate = () => {
+    setIsGenerating(true);
+    setCountdown(10);
+    
+    countdownIntervalRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownIntervalRef.current);
+          actualGenerateTimetable();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const handleCancelGenerate = () => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
+    setOpenConfirmDialog(false);
+    setCountdown(10);
+    setIsGenerating(false);
+  };
+
+  const actualGenerateTimetable = async () => {
     setLoading(true);
     setMessage(`Generating timetable for ${course} Semester ${semester}...`);
     try {
@@ -533,8 +588,23 @@ function AdminDashboard() {
       console.error("Generate error:", error);
     } finally {
       setLoading(false);
+      setOpenConfirmDialog(false);
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
     }
   };
+
+  const generateTimetable = handleGenerateClick;
+
+  
+  useEffect(() => {
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, []);
 
   const sendNotifications = async () => {
     setLoading(true);
@@ -559,13 +629,13 @@ function AdminDashboard() {
     try {
       setMessage(`Generating PDF for Section ${sectionToDownload}...`);
       
-      // Create a temporary container for the specific section
+      
       const tempContainer = document.createElement('div');
       tempContainer.style.position = 'absolute';
       tempContainer.style.left = '-9999px';
       document.body.appendChild(tempContainer);
       
-      // Render the timetable for this section
+      
       tempContainer.innerHTML = `
         <div style="padding: 20px; background: white;">
           <div style="padding: 20px; background: #2c3e50; color: white; text-align: center; margin-bottom: 10px;">
@@ -647,7 +717,7 @@ function AdminDashboard() {
     
     for (let i = 0; i < sections.length; i++) {
       await downloadSpecificTimetable(sections[i]);
-      // Small delay between downloads
+      
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
@@ -714,7 +784,7 @@ function AdminDashboard() {
     setDrawerOpen(open);
   };
 
-  // Organized menu structure
+  
   const menuStructure = [
     {
       category: "Teachers",
@@ -1397,6 +1467,135 @@ function AdminDashboard() {
               >
                 Download {downloadType === "all" ? "All" : "Section"}
               </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Confirmation Dialog for Generate */}
+          <Dialog
+            open={openConfirmDialog}
+            onClose={handleCancelGenerate}
+            maxWidth="sm"
+            fullWidth
+            PaperProps={{
+              sx: {
+                borderRadius: "16px",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+              }
+            }}
+          >
+            <DialogTitle sx={{ 
+              textAlign: "center", 
+              backgroundColor: "#2c3e50",
+              color: "white",
+              py: 2.5,
+              fontWeight: 600,
+              fontSize: "1.3rem"
+            }}>
+              ⚠️ Confirm Timetable Generation
+            </DialogTitle>
+            <DialogContent sx={{ p: 4, textAlign: "center" }}>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: "#2c3e50" }}>
+                  Are you sure you want to regenerate the timetable?
+                </Typography>
+                <Typography variant="body2" sx={{ color: "#7f8c8d", mb: 2 }}>
+                  This will replace the current timetable for <strong>{course} Semester {semester}</strong>.
+                </Typography>
+                {isGenerating && (
+                  <Box sx={{ mt: 3, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <Box sx={{ position: "relative", display: "inline-flex", mb: 2 }}>
+                      <CircularProgress
+                        variant="determinate"
+                        value={(10 - countdown) * 10}
+                        size={100}
+                        thickness={4}
+                        sx={{
+                          color: countdown > 3 ? "#3498db" : "#e74c3c",
+                          transition: "color 0.3s"
+                        }}
+                      />
+                      <Box
+                        sx={{
+                          top: 0,
+                          left: 0,
+                          bottom: 0,
+                          right: 0,
+                          position: "absolute",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Typography variant="h5" component="div" sx={{ fontWeight: 700, color: "#2c3e50" }}>
+                          {countdown}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#e74c3c" }}>
+                      ⏱️ Starting in {countdown} second{countdown !== 1 ? 's' : ''}...
+                    </Typography>
+                  </Box>
+                )}
+                {!isGenerating && (
+                  <Box sx={{ mt: 3, p: 2, backgroundColor: "#ecf0f1", borderRadius: 2 }}>
+                    <Typography variant="caption" sx={{ color: "#34495e" }}>
+                      💡 Click "Yes, Generate!" to start the 10-second countdown
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ px: 4, pb: 3, justifyContent: "center", gap: 2 }}>
+              <Button
+                onClick={handleCancelGenerate}
+                variant="outlined"
+                size="large"
+                disabled={isGenerating && countdown < 3}
+                sx={{
+                  minWidth: 120,
+                  borderColor: "#95a5a6",
+                  color: "#7f8c8d",
+                  "&:hover": {
+                    borderColor: "#7f8c8d",
+                    backgroundColor: "#f5f5f5"
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+              {!isGenerating ? (
+                <Button
+                  onClick={handleConfirmGenerate}
+                  variant="contained"
+                  size="large"
+                  startIcon={<AddCircleIcon />}
+                  sx={{
+                    minWidth: 160,
+                    backgroundColor: "#27ae60",
+                    "&:hover": { backgroundColor: "#229954" }
+                  }}
+                >
+                  Yes, Generate!
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleCancelGenerate}
+                  variant="contained"
+                  size="large"
+                  disabled={countdown < 3}
+                  sx={{
+                    minWidth: 160,
+                    backgroundColor: "#e74c3c",
+                    "&:hover": { backgroundColor: "#c0392b" },
+                    "&.Mui-disabled": {
+                      backgroundColor: "#bdc3c7",
+                      color: "white"
+                    }
+                  }}
+                >
+                  {countdown >= 3 ? `Cancel (${countdown}s)` : "Cannot Cancel"}
+                </Button>
+              )}
             </DialogActions>
           </Dialog>
         </>

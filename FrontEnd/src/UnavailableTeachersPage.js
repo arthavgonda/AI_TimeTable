@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import { styled } from "@mui/system";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -45,6 +45,13 @@ function UnavailableTeachersPage() {
 
   useEffect(() => {
     fetchUnavailableTeachers();
+    
+    
+    const intervalId = setInterval(() => {
+      fetchUnavailableTeachers();
+    }, 30000);
+    
+    return () => clearInterval(intervalId);
   }, []);
 
   const fetchUnavailableTeachers = async () => {

@@ -35,7 +35,7 @@ import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http://localhost:8000";
+const API_URL = "http:
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -89,11 +89,18 @@ function ClassroomManagement() {
   useEffect(() => {
     fetchClassrooms();
     loadAllSubjects();
+    
+    
+    const intervalId = setInterval(() => {
+      fetchClassrooms();
+    }, 30000);
+    
+    return () => clearInterval(intervalId);
   }, []);
 
   const loadAllSubjects = async () => {
     try {
-      // Load subjects for all semesters of BTech (most comprehensive list)
+      
       const subjectSets = await Promise.all([
         axios.get(`${API_URL}/subjects/BTech/4`),
         axios.get(`${API_URL}/subjects/MCA/2`),
