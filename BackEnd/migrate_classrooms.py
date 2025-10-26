@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 """
 Database migration script to add subjects column to classrooms table
 """
@@ -11,17 +11,17 @@ def migrate():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    
+    # Check if subjects column exists
     cursor.execute("PRAGMA table_info(classrooms)")
     columns = [col[1] for col in cursor.fetchall()]
     
     if "subjects" not in columns:
         try:
-            
+            # Add subjects column (JSON stored as TEXT in SQLite)
             cursor.execute("ALTER TABLE classrooms ADD COLUMN subjects TEXT")
             print("✅ Added 'subjects' column to classrooms table")
             
-            
+            # Initialize existing classrooms with empty array
             cursor.execute("UPDATE classrooms SET subjects = '[]' WHERE subjects IS NULL")
             print("✅ Initialized subjects field for existing classrooms")
             

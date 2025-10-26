@@ -18,7 +18,6 @@ import {
   MenuItem,
   Chip,
   OutlinedInput,
-  Autocomplete,
 } from "@mui/material";
 import { styled } from "@mui/system";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -27,7 +26,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import EventBusyIcon from "@mui/icons-material/EventBusy";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http:
+const API_URL = "http://localhost:8000";
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -78,25 +77,11 @@ function TeacherPreferences() {
 
   useEffect(() => {
     fetchTeachers();
-    
-    
-    const intervalId = setInterval(() => {
-      fetchTeachers();
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
     if (selectedTeacher) {
       fetchTeacherPreferences(selectedTeacher);
-      
-      
-      const intervalId = setInterval(() => {
-        fetchTeacherPreferences(selectedTeacher);
-      }, 30000);
-      
-      return () => clearInterval(intervalId);
     }
   }, [selectedTeacher]);
 
@@ -199,25 +184,23 @@ function TeacherPreferences() {
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
             Select Teacher
           </Typography>
-          <Autocomplete
-            value={selectedTeacher}
-            onChange={(event, newValue) => setSelectedTeacher(newValue || "")}
-            options={teachers}
-            fullWidth
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Search or Select Teacher"
-                placeholder="Type to search..."
-              />
-            )}
-            renderOption={(props, option) => (
-              <Box component="li" {...props} sx={{ padding: "10px 16px" }}>
-                {option}
-              </Box>
-            )}
-            noOptionsText="No teacher found"
-          />
+          <FormControl fullWidth>
+            <InputLabel>Teacher</InputLabel>
+            <Select
+              value={selectedTeacher}
+              onChange={(e) => setSelectedTeacher(e.target.value)}
+              label="Teacher"
+            >
+              <MenuItem value="">
+                <em>Select a teacher</em>
+              </MenuItem>
+              {teachers.map((teacher) => (
+                <MenuItem key={teacher} value={teacher}>
+                  {teacher}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </CardContent>
       </StyledCard>
 

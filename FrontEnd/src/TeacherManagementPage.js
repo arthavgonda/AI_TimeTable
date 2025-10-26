@@ -35,7 +35,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http:
+const API_URL = "http://localhost:8000";
 
 const COURSES = ["BTech", "MCA", "MBA", "BCA"];
 const SEMESTERS = {
@@ -117,24 +117,17 @@ function TeacherManagementPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  
+  // Form states for adding/editing teacher
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     courses: [],
-    courseSubjects: {} 
+    courseSubjects: {} // { "BTech": { "4": ["TCS-408", "PCS-408"] } }
   });
 
   useEffect(() => {
     fetchTeachers();
-    
-    
-    const intervalId = setInterval(() => {
-      fetchTeachers();
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
   }, []);
 
   const fetchTeachers = async () => {

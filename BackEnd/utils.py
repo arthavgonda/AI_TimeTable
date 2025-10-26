@@ -50,7 +50,7 @@ SUBJECTS_BY_SEMESTER = {
     }
 }
 
-
+# Default teachers (used as fallback or initial seeding)
 DEFAULT_TEACHERS = [
     "Dr. D.R. Gangodkar", "Dr. Jyoti Agarwal", "Dr. Amit Kumar", "Mr. Kireet Joshi",
     "Mr. Sanjeev Kukreti", "Ms. Garima Sharma", "Mr. Chitransh", "Dr. Vikas Tripathi",
@@ -74,7 +74,7 @@ data = {
         "TCS-408", "TCS-402", "TCS-403", "TCS-409", "XCS-401", "TOC-401",
         "Elective", "PCS-408", "PCS-403", "PCS-409", "DP900", "AI900", "NDE"
     ],
-    "teachers": DEFAULT_TEACHERS.copy(),  
+    "teachers": DEFAULT_TEACHERS.copy(),  # Will be updated dynamically from database
     "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
     "time_slots": [
         "8:00-9:00", "9:00-10:00", "10:00-11:00", "11:00-12:00",
@@ -130,7 +130,7 @@ subject_teacher_mapping = {
     "DP900": ["Mr. Vishal Trivedi", "Dr. Teekam Singh"],
     "AI900": ["Dr. Jay R. Bhatnagar", "Ms. Garima Sharma"],
     "NDE": ["Mr. Mohammad Rehan", "Mr. O.P. Pal"],
-    
+    # Generic mappings for other courses (can be expanded)
     "MCS-101": ["Dr. Amit Kumar", "Dr. Vikas Tripathi"],
     "MCS-102": ["Dr. Jyoti Agarwal", "Mr. Piyush Agarwal"],
     "MCS-103": ["Dr. Hemant Singh Pokhariya", "Dr. Sribidhya Mohanty"],
@@ -152,7 +152,7 @@ def get_semester_from_subject_code(subject_code):
             number_part = subject_code.split("-")[1]
             if number_part.isdigit():
                 return int(number_part[0])
-            
+            # Handle special codes like DP900, AI900
             if len(number_part) >= 3 and number_part[:1].isdigit():
                 return int(number_part[0])
     except:

@@ -16,7 +16,7 @@ import {
 } from "@mui/material";
 import { styled } from "@mui/system";
 
-const API_URL = "http:
+const API_URL = "http://localhost:8000";
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -47,13 +47,6 @@ function TeacherLectureLimitPage() {
 
   useEffect(() => {
     fetchTeacherData();
-    
-    
-    const intervalId = setInterval(() => {
-      fetchTeacherData();
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
   }, []);
 
   const fetchTeacherData = async () => {

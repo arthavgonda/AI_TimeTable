@@ -46,11 +46,11 @@ class TeacherData(Base):
     sections_taught = Column(JSON, nullable=True)     
     availability = Column(JSON, nullable=True)        
     lecture_limit = Column(Integer, nullable=True)
-    earliest_time = Column(String, nullable=True)  
-    latest_time = Column(String, nullable=True)    
-    preferred_days = Column(JSON, nullable=True)   
-    preferred_slots = Column(JSON, nullable=True)  
-    unavailable_days = Column(JSON, nullable=True) 
+    earliest_time = Column(String, nullable=True)  # e.g., "08:00"
+    latest_time = Column(String, nullable=True)    # e.g., "16:00"
+    preferred_days = Column(JSON, nullable=True)   # e.g., ["Monday", "Wednesday"]
+    preferred_slots = Column(JSON, nullable=True)  # e.g., ["10:00-11:00", "14:00-15:00"]
+    unavailable_days = Column(JSON, nullable=True) # e.g., ["Friday"]
 
 class Classroom(Base):
     __tablename__ = "classrooms"
@@ -60,8 +60,8 @@ class Classroom(Base):
     building = Column(String, nullable=True)
     floor = Column(String, nullable=True)
     capacity = Column(Integer, nullable=False)
-    room_type = Column(String, nullable=False)  
-    subjects = Column(JSON, nullable=True)  
+    room_type = Column(String, nullable=False)  # lab, lecture, seminar
+    subjects = Column(JSON, nullable=True)  # Subjects this room is for (e.g., ["TCS-408", "PCS-408"])
     is_active = Column(Boolean, default=True, nullable=False)    
 
 class Teacher(Base):
@@ -111,8 +111,8 @@ class ClassroomCreate(BaseModel):
     building: Optional[str] = None
     floor: Optional[str] = None
     capacity: int
-    room_type: str  
-    subjects: List[str] = []  
+    room_type: str  # lab, lecture, seminar
+    subjects: List[str] = []  # Subjects this room is designated for
 
 class ClassroomUpdate(BaseModel):
     room_number: str
@@ -120,7 +120,7 @@ class ClassroomUpdate(BaseModel):
     floor: Optional[str] = None
     capacity: int
     room_type: str
-    subjects: List[str] = []  
+    subjects: List[str] = []  # Subjects this room is designated for
 
 class TeacherPreferences(BaseModel):
     teacher_id: str
@@ -144,7 +144,7 @@ def load_persisted_data():
     global teacher_subject_sections, teacher_sections_taught, teacher_availability, teacher_lecture_limits
     db = SessionLocal()
     try:
-        
+        # First, initialize default teachers in Teacher table if they don't exist
         for teacher_name in DEFAULT_TEACHERS:
             teacher_record = db.query(Teacher).filter(Teacher.name == teacher_name).first()
             if not teacher_record:
@@ -162,12 +162,12 @@ def load_persisted_data():
         
         db.commit()
         
-        
+        # Load all active teachers from database and sync with utils.py
         all_teachers = db.query(Teacher).filter(Teacher.is_active == True).all()
         data["teachers"] = [teacher.name for teacher in all_teachers]
         print(f"Loaded {len(data['teachers'])} active teachers from database")
         
-        
+        # Initialize TeacherData for all teachers
         for teacher_name in data["teachers"]:
             teacher_data = db.query(TeacherData).filter(TeacherData.id == teacher_name).first()
             if teacher_data:
@@ -180,7 +180,7 @@ def load_persisted_data():
                 if teacher_data.lecture_limit is not None:
                     teacher_lecture_limits[teacher_name] = teacher_data.lecture_limit
             else:
-                
+                # Create TeacherData for new teachers
                 new_teacher_data = TeacherData(
                     id=teacher_name, 
                     subject_sections={}, 
@@ -235,14 +235,14 @@ def store_timetable(start_date=None, course="BTech", semester=4):
         start_date = today.strftime("%Y-%m-%d")
         start = today
     
-    
+    # Validate course and semester
     is_valid, message = validate_course_semester_section(course, semester, "A")
     if not is_valid and "Section" not in message:
         print(f"Warning: {message}. Using defaults.")
         course = "BTech"
         semester = 4
     
-    
+    # Load teacher preferences from database
     db = SessionLocal()
     try:
         teacher_preferences = {}
@@ -257,7 +257,7 @@ def store_timetable(start_date=None, course="BTech", semester=4):
                     "unavailable_days": teacher_data.unavailable_days or []
                 }
         
-        
+        # Load classrooms from database
         classrooms = []
         classroom_records = db.query(Classroom).filter(Classroom.is_active == True).all()
         for classroom in classroom_records:
@@ -312,7 +312,7 @@ async def startup_event():
 def home():
     return {"message": "AI Timetable Backend is Running!"}
 
-
+# ========== Dynamic Course/Semester/Section Endpoints ==========
 
 @app.get("/courses")
 def get_courses():
@@ -349,12 +349,12 @@ def validate_combination(course: str, semester: int, section: str):
     is_valid, message = validate_course_semester_section(course, semester, section)
     return {"valid": is_valid, "message": message, "course": course, "semester": semester, "section": section}
 
-
+# ========== Timetable Generation Endpoints ==========
 
 @app.get("/generate")
 def generate(date: str = None, course: str = "BTech", semester: int = 4):
     """Generate timetable for specified course and semester"""
-    
+    # Validate course and semester
     sections = get_sections_for_course(course)
     if not sections:
         return {"error": f"Course '{course}' not found"}
@@ -425,27 +425,27 @@ def assign_teacher_subject_sections(assignment: TeacherSubjectSections):
     subject = assignment.subject
     sections = assignment.sections
     
-    
+    # Validate teacher exists
     if teacher_id not in data["teachers"]:
         raise HTTPException(status_code=404, detail=f"Teacher '{teacher_id}' not found in system")
     
+    # Flexible subject validation - accept any subject
+    # (subjects can be from any course/semester)
     
-    
-    
-    
+    # Initialize teacher in subject_sections if needed
     if teacher_id not in teacher_subject_sections:
         teacher_subject_sections[teacher_id] = {}
     
-    
+    # Assign sections to subject for this teacher
     teacher_subject_sections[teacher_id][subject] = sections
     
-    
+    # Update subject_teacher_mapping if needed
     if subject not in subject_teacher_mapping:
         subject_teacher_mapping[subject] = []
     if teacher_id not in subject_teacher_mapping[subject]:
         subject_teacher_mapping[subject].append(teacher_id)
     
-    
+    # Save to database
     save_persisted_data()
     
     print(f"✅ Assigned {teacher_id} to teach {subject} in sections {sections}")
@@ -506,7 +506,7 @@ def get_all_teachers():
     try:
         teachers = db.query(Teacher).filter(Teacher.is_active == True).all()
         
-        
+        # Sync with utils.py data structure
         data["teachers"] = [t.name for t in teachers]
         
         return {
@@ -531,11 +531,11 @@ def sync_teachers():
     global teacher_availability, teacher_subject_sections, teacher_sections_taught, teacher_lecture_limits
     db = SessionLocal()
     try:
-        
+        # Reload teachers from database
         all_teachers = db.query(Teacher).filter(Teacher.is_active == True).all()
         data["teachers"] = [teacher.name for teacher in all_teachers]
         
-        
+        # Reload TeacherData and sync in-memory structures
         for teacher_name in data["teachers"]:
             teacher_data = db.query(TeacherData).filter(TeacherData.id == teacher_name).first()
             if teacher_data:
@@ -548,7 +548,7 @@ def sync_teachers():
                 if teacher_data.lecture_limit is not None:
                     teacher_lecture_limits[teacher_name] = teacher_data.lecture_limit
             else:
-                
+                # Initialize if not exists
                 if teacher_name not in teacher_availability:
                     teacher_availability[teacher_name] = True
         
@@ -566,13 +566,13 @@ def add_teacher(teacher_data: TeacherCreate):
     global teacher_availability, teacher_subject_sections, teacher_sections_taught, teacher_lecture_limits
     db = SessionLocal()
     try:
-        
+        # Check if teacher already exists
         existing = db.query(Teacher).filter(Teacher.name == teacher_data.name).first()
         if existing:
             db.close()
             return {"error": f"Teacher '{teacher_data.name}' already exists", "teacher_id": existing.id}
         
-        
+        # Create Teacher record
         new_teacher = Teacher(
             id=str(uuid.uuid4()),
             name=teacher_data.name,
@@ -584,9 +584,9 @@ def add_teacher(teacher_data: TeacherCreate):
         )
         db.add(new_teacher)
         
-        
+        # Create TeacherData record with initial values
         new_teacher_data = TeacherData(
-            id=teacher_data.name,  
+            id=teacher_data.name,  # Use name as ID for TeacherData
             subject_sections={},
             sections_taught=[],
             availability=True,
@@ -600,16 +600,16 @@ def add_teacher(teacher_data: TeacherCreate):
         db.add(new_teacher_data)
         db.commit()
         
-        
+        # Sync with utils.py data structure
         sync_teacher_to_data(teacher_data.name)
         
-        
+        # Initialize in-memory structures
         teacher_availability[teacher_data.name] = True
         teacher_subject_sections[teacher_data.name] = {}
         teacher_sections_taught[teacher_data.name] = []
         teacher_lecture_limits[teacher_data.name] = None
         
-        
+        # Update subject-teacher mapping
         for course, semesters in teacher_data.courseSubjects.items():
             for semester, subjects in semesters.items():
                 for subject in subjects:
@@ -695,14 +695,14 @@ def delete_teacher(teacher_id: str):
         
         teacher_name = teacher.name
         
-        
+        # Soft delete in database
         teacher.is_active = False
         db.commit()
         
-        
+        # Sync with utils.py data structure
         remove_teacher_from_data(teacher_name)
         
-        
+        # Clean up in-memory structures
         if teacher_name in teacher_availability:
             del teacher_availability[teacher_name]
         if teacher_name in teacher_subject_sections:
@@ -712,7 +712,7 @@ def delete_teacher(teacher_id: str):
         if teacher_name in teacher_lecture_limits:
             del teacher_lecture_limits[teacher_name]
         
-        
+        # Remove from subject-teacher mapping
         for subject, teachers in subject_teacher_mapping.items():
             if teacher_name in teachers:
                 teachers.remove(teacher_name)
@@ -739,7 +739,7 @@ def reset_teacher_availability():
     save_persisted_data()
     return {"message": "All teachers set to available"}
 
-
+# ==================== CLASSROOM MANAGEMENT ENDPOINTS ====================
 
 @app.get("/classrooms")
 def get_all_classrooms():
@@ -836,7 +836,7 @@ def delete_classroom(classroom_id: str):
     finally:
         db.close()
 
-
+# ==================== TEACHER PREFERENCES ENDPOINTS ====================
 
 @app.get("/teacher_preferences/{teacher_id}")
 def get_teacher_preferences(teacher_id: str):
@@ -912,7 +912,7 @@ def update_teacher_preferences(preferences: TeacherPreferences):
         
         db.commit()
         
-        
+        # Regenerate timetable
         timetable, start_date = store_timetable()
         
         return {
@@ -925,14 +925,14 @@ def update_teacher_preferences(preferences: TeacherPreferences):
     finally:
         db.close()
 
-
+# ==================== ROOM UTILIZATION ENDPOINTS ====================
 
 @app.get("/room_utilization")
 def get_room_utilization():
     """Get utilization report for all classrooms"""
     db = SessionLocal()
     try:
-        
+        # Get latest timetable
         latest_timetable_entry = db.query(Timetable).order_by(Timetable.date.desc()).first()
         if not latest_timetable_entry:
             return {"error": "No timetable found"}
@@ -941,13 +941,13 @@ def get_room_utilization():
         classrooms = db.query(Classroom).filter(Classroom.is_active == True).all()
         
         utilization = {}
-        total_slots = 48  
+        total_slots = 48  # 8 time slots * 6 days
         
         for classroom in classrooms:
             used_slots = 0
             room_schedule = {}
             
-            
+            # Count how many times this room appears in the timetable
             for section, days_data in timetable.items():
                 for day, slots in days_data.items():
                     for time_slot, content in slots.items():
@@ -989,7 +989,7 @@ def get_room_conflicts():
         timetable = json.loads(latest_timetable_entry.data)
         conflicts = []
         
-        
+        # Track room assignments by day and time
         room_assignments = {}
         
         for section, days_data in timetable.items():
@@ -1006,7 +1006,7 @@ def get_room_conflicts():
                             "teacher": content.get("teacher")
                         })
         
-        
+        # Find conflicts (same room, same time, multiple sections)
         for key, assignments in room_assignments.items():
             if len(assignments) > 1:
                 parts = key.split("_")
