@@ -38,23 +38,35 @@ npm start
 - ✅ **Conflict Detection**: Automatic detection and resolution
 - ✅ **Analytics**: Teacher workload, room utilization reports
 
-### **🆕 New Features**
+### **🆕 Advanced Features**
 
-#### **Classroom Subject Assignment**
-- Specify which subjects a lab/classroom is designated for
-- Example: "Programming Lab" → [PCS-408, PCS-403, PCS-409]
-- Smart allocation prioritizes subject-specific rooms
-- General purpose rooms available as fallback
-- Perfect for specialized labs (Physics, Chemistry, Programming, etc.)
+#### **Subject Dependencies & Sequencing**
+- Define prerequisites (e.g., Data Structures before Advanced Algorithms)
+- Theory-lab pairing with optimal gap days
+- Corequisite scheduling (subjects taken together)
+- Priority-based scheduling
+- Intelligent subject grouping by category
 
-#### **Admin Timetable Download**
-- Download timetables as PDFs directly from Admin Dashboard
-- **Two Options**:
-  1. **Download All**: Download PDFs for all sections at once
-  2. **Download Specific**: Select and download a single section
-- High-quality landscape PDFs with all details
-- Includes course, semester, section, dates, subjects, teachers, and rooms
-- Batch download capability for efficient distribution
+#### **Cognitive Load Distribution**
+- Morning Peak (9-11 AM): Schedule difficult subjects (Algorithms, Math)
+- Post-Lunch Dip (1-2 PM): Lighter subjects, lunch breaks
+- Late Afternoon (4-5 PM): Interactive labs and practicals
+- Monday Easing: Moderate difficulty to start the week
+- Friday Afternoon: Lighter load for weekend preparation
+
+#### **Batch Management System**
+- Dynamic batch creation (B.Tech, M.Tech, BCA, MCA)
+- Semester-based organization
+- Multiple sections per batch
+- Elective group management
+- Lab-specific scheduling rules
+
+#### **Background Task Processing**
+- Real-time progress updates
+- No timeout errors (120s limit removed)
+- Instant API response (100-200ms)
+- Task continues in background
+- Progress polling every 2 seconds
 
 ### **👥 Teacher Management**
 - Add, update, delete teachers through UI
@@ -157,6 +169,38 @@ PUT    /update_classroom/{id}        # Update classroom (with subjects)
 DELETE /delete_classroom/{id}        # Delete classroom
 GET    /room_utilization             # Room utilization report
 GET    /room_conflicts               # Room conflict detection
+```
+
+### **Subject Dependencies**
+```
+GET    /subject-dependencies                        # Get all dependencies
+POST   /subject-dependencies                       # Create dependency
+PUT    /subject-dependencies/{id}                  # Update dependency
+DELETE /subject-dependencies/{id}                  # Delete dependency
+GET    /batches/{batch_id}/subject-dependencies    # Batch dependencies
+```
+
+### **Background Tasks**
+```
+GET    /generate?async_mode=true     # Start background task
+GET    /task/{task_id}               # Check task status/progress
+```
+
+### **Batch Management**
+```
+GET    /batches                      # Get all batches
+POST   /batches                      # Create batch
+GET    /batches/{id}/sections        # Get sections
+POST   /sections                     # Create section
+GET    /batches/{id}/subjects        # Get subjects
+POST   /subjects                     # Create subject
+```
+
+### **Elective Management**
+```
+GET    /batches/{id}/elective-groups # Get elective groups
+POST   /elective-groups             # Create elective group
+POST   /elective-enrollments        # Update enrollment
 ```
 
 **Classroom Subjects Feature**:

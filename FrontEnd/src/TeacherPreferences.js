@@ -25,6 +25,7 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import SaveIcon from "@mui/icons-material/Save";
 import EventBusyIcon from "@mui/icons-material/EventBusy";
 import { useNavigate } from "react-router-dom";
+import SearchableTeacherSelector from "./components/SearchableTeacherSelector";
 
 const API_URL = "http://localhost:8000";
 
@@ -63,7 +64,6 @@ const TIME_SLOTS = [
 
 function TeacherPreferences() {
   const navigate = useNavigate();
-  const [teachers, setTeachers] = useState([]);
   const [selectedTeacher, setSelectedTeacher] = useState("");
   const [preferences, setPreferences] = useState({
     earliest_time: "",
@@ -76,24 +76,10 @@ function TeacherPreferences() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchTeachers();
-  }, []);
-
-  useEffect(() => {
     if (selectedTeacher) {
       fetchTeacherPreferences(selectedTeacher);
     }
   }, [selectedTeacher]);
-
-  const fetchTeachers = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/teacher_availability`);
-      const teacherList = Object.keys(response.data);
-      setTeachers(teacherList);
-    } catch (error) {
-      setMessage("Error fetching teachers: " + error.message);
-    }
-  };
 
   const fetchTeacherPreferences = async (teacherId) => {
     setLoading(true);
@@ -184,23 +170,14 @@ function TeacherPreferences() {
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
             Select Teacher
           </Typography>
-          <FormControl fullWidth>
-            <InputLabel>Teacher</InputLabel>
-            <Select
-              value={selectedTeacher}
-              onChange={(e) => setSelectedTeacher(e.target.value)}
-              label="Teacher"
-            >
-              <MenuItem value="">
-                <em>Select a teacher</em>
-              </MenuItem>
-              {teachers.map((teacher) => (
-                <MenuItem key={teacher} value={teacher}>
-                  {teacher}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <SearchableTeacherSelector
+            value={selectedTeacher}
+            onChange={setSelectedTeacher}
+            loading={loading}
+          />
+          <Typography variant="caption" sx={{ color: "#7f8c8d", mt: 1, display: "block" }}>
+            Start typing to search for a teacher. Results load dynamically from the backend.
+          </Typography>
         </CardContent>
       </StyledCard>
 

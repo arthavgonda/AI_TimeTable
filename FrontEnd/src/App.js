@@ -30,14 +30,18 @@ import ClassroomManagement from "./ClassroomManagement";
 import TeacherPreferences from "./TeacherPreferences";
 import RoomConflicts from "./RoomConflicts";
 import TeacherLoadHeatmap from "./TeacherLoadHeatmap";
+import BatchManagement from "./BatchManagement";
+import SubjectDependencyManagement from "./SubjectDependencyManagement";
+import QueryProvider from "./QueryProvider";
 import minimalTheme from "./theme";
 import "./App.css";
 
 function App() {
   return (
-    <ThemeProvider theme={minimalTheme}>
-      <CssBaseline />
-      <Router>
+    <QueryProvider>
+      <ThemeProvider theme={minimalTheme}>
+        <CssBaseline />
+        <Router>
         <Container maxWidth="lg" sx={{ py: 4 }}>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -52,10 +56,13 @@ function App() {
             <Route path="/teacher-preferences" element={<TeacherPreferences />} />
             <Route path="/room-conflicts" element={<RoomConflicts />} />
             <Route path="/teacher-load" element={<TeacherLoadHeatmap />} />
+            <Route path="/batch-management" element={<BatchManagement />} />
+            <Route path="/subject-dependencies" element={<SubjectDependencyManagement />} />
           </Routes>
         </Container>
       </Router>
-    </ThemeProvider>
+      </ThemeProvider>
+    </QueryProvider>
   );
 }
 

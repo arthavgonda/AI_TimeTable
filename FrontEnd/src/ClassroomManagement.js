@@ -93,7 +93,7 @@ function ClassroomManagement() {
 
   const loadAllSubjects = async () => {
     try {
-      // Load subjects for all semesters of BTech (most comprehensive list)
+
       const subjectSets = await Promise.all([
         axios.get(`${API_URL}/subjects/BTech/4`),
         axios.get(`${API_URL}/subjects/MCA/2`),

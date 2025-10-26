@@ -40,7 +40,7 @@ import {
 
 const API_URL = "http://localhost:8000";
 
-// Minimal styled components
+
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(3),
   minHeight: "100vh",
@@ -136,7 +136,7 @@ const LunchBox = styled(Box)({
   fontWeight: 600,
 });
 
-// Subject colors - clean and minimal
+
 const subjectColors = {
   "TCS-408": "#e3f2fd",
   "TCS-402": "#f3e5f5",
@@ -177,7 +177,7 @@ function StudentDashboard() {
   const [weekDates, setWeekDates] = useState({});
   const timetableRef = useRef(null);
 
-  // Load courses on component mount
+
   useEffect(() => {
     const loadCourses = async () => {
       try {
@@ -190,7 +190,7 @@ function StudentDashboard() {
     loadCourses();
   }, []);
 
-  // Load semesters when course changes
+
   useEffect(() => {
     if (course) {
       const loadSemesters = async () => {
@@ -205,14 +205,14 @@ function StudentDashboard() {
     }
   }, [course]);
 
-  // Load sections when course changes
+
   useEffect(() => {
     if (course) {
       const loadSections = async () => {
         try {
           const response = await axios.get(`${API_URL}/sections/${course}`);
           setSections(response.data.sections || []);
-          setSection(""); // Reset section when course changes
+          setSection("");
         } catch (error) {
           console.error("Error loading sections:", error);
         }
@@ -561,7 +561,10 @@ function StudentDashboard() {
                         const slotContent = getSlotContent(day, timeSlot);
                         return (
                           <ClassCell key={day}>
-                            {slotContent ? (
+                            {slotContent && slotContent.teacher && 
+                             slotContent.teacher !== "respective teacher" &&
+                             slotContent.teacher !== "Elective Faculty" &&
+                             slotContent.teacher.trim() !== "" ? (
                               slotContent.subject === "Lunch" ? (
                                 <LunchBox>🍽️ Lunch Break</LunchBox>
                               ) : (
@@ -577,7 +580,7 @@ function StudentDashboard() {
                                 </SubjectBox>
                               )
                             ) : (
-                              <EmptySlot>—</EmptySlot>
+                              <EmptySlot></EmptySlot>
                             )}
                           </ClassCell>
                         );

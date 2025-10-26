@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { useQuery } from "@tanstack/react-query";
+import useAutoRefresh from "./hooks/useAutoRefresh";
 import {
   Container,
   Typography,
@@ -67,15 +69,12 @@ import ExpandMore from '@mui/icons-material/ExpandMore';
 import PeopleIcon from '@mui/icons-material/People';
 import ClassIcon from '@mui/icons-material/Class';
 import InsightsIcon from '@mui/icons-material/Insights';
+import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from "react-router-dom";
 
 const API_URL = "http://localhost:8000";
 
-const SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "ARQ", "DS1", "DS2", "ML1", "ML2", "Cyber", "AI"];
-const SUBJECTS = [
-  "TCS-408", "TCS-402", "TCS-403", "TCS-409", "XCS-401", "TOC-401",
-  "Elective", "PCS-408", "PCS-403", "PCS-409", "DP900", "AI900", "NDE"
-];
+
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(3),
@@ -176,7 +175,7 @@ const CategoryDivider = styled(Divider)(({ theme }) => ({
   backgroundColor: "rgba(255,255,255,0.1)",
 }));
 
-// Timetable specific styles
+
 const TimetableContainer = styled(Paper)(({ theme }) => ({
   borderRadius: "8px",
   overflow: "hidden",
@@ -188,7 +187,13 @@ const TimetableContainer = styled(Paper)(({ theme }) => ({
 const StyledTable = styled(Table)(({ theme }) => ({
   minWidth: 1000,
   "& .MuiTableCell-root": {
-    borderColor: "#e0e0e0",
+    borderColor: "#e2e8f0",
+  },
+  "& .MuiTableBody .MuiTableRow:nth-of-type(odd) .MuiTableCell": {
+    backgroundColor: "#ffffff",
+  },
+  "& .MuiTableBody .MuiTableRow:nth-of-type(even) .MuiTableCell": {
+    backgroundColor: "#f8fafc",
   },
 }));
 
@@ -204,39 +209,48 @@ const TimeCell = styled(TableCell)(({ theme }) => ({
 }));
 
 const DayHeaderCell = styled(TableCell)(({ theme }) => ({
-  backgroundColor: "#2c3e50",
-  color: "#ffffff",
-  fontWeight: 600,
+  backgroundColor: "#f8fafc",
+  color: "#1e293b",
+  fontWeight: 700,
   textAlign: "center",
-  padding: "16px",
-  fontSize: "0.95rem",
-  borderBottom: "2px solid #2c3e50",
+  padding: "16px 12px",
+  fontSize: "0.875rem",
+  borderBottom: "2px solid #e2e8f0",
+  borderRight: "1px solid #e2e8f0",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px",
 }));
 
 const ClassCell = styled(TableCell)(({ theme }) => ({
-  padding: "8px",
+  padding: "12px 8px",
   textAlign: "center",
   verticalAlign: "middle",
   backgroundColor: "#ffffff",
-  borderRight: "1px solid #e0e0e0",
-  borderBottom: "1px solid #e0e0e0",
-  height: "80px",
+  borderRight: "1px solid #e2e8f0",
+  borderBottom: "1px solid #e2e8f0",
+  minHeight: "90px",
+  transition: "background-color 0.2s ease",
+  "&:hover": {
+    backgroundColor: "#f8fafc",
+  },
 }));
 
 const SubjectBox = styled(Box)(({ theme, bgColor }) => ({
-  backgroundColor: bgColor || "#f0f0f0",
-  padding: "8px 12px",
-  borderRadius: "6px",
+  backgroundColor: bgColor || "#f1f5f9",
+  padding: "10px 12px",
+  borderRadius: "8px",
   height: "100%",
   display: "flex",
   flexDirection: "column",
   justifyContent: "center",
   alignItems: "center",
-  transition: "transform 0.2s ease",
+  transition: "all 0.2s ease",
   cursor: "pointer",
+  border: "1px solid rgba(226, 232, 240, 0.8)",
   "&:hover": {
-    transform: "scale(1.02)",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+    transform: "translateY(-2px)",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+    borderColor: "#cbd5e1",
   },
 }));
 
@@ -264,10 +278,11 @@ const RoomNumber = styled(Typography)(({ theme }) => ({
   gap: "4px",
 }));
 
-const EmptySlot = styled(Typography)(({ theme }) => ({
-  color: "#bdbdbd",
-  fontSize: "1.5rem",
-  fontWeight: 300,
+const EmptySlot = styled(Box)(({ theme }) => ({
+  minHeight: "60px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 }));
 
 const LunchBox = styled(Box)(({ theme }) => ({
@@ -280,21 +295,38 @@ const LunchBox = styled(Box)(({ theme }) => ({
   fontSize: "0.9rem",
 }));
 
-// Professional color scheme for subjects
-const subjectColors = {
-  "TCS-408": "#e3f2fd",
-  "TCS-402": "#f3e5f5",
-  "TCS-403": "#e8f5e9",
-  "TCS-409": "#fff3e0",
-  "XCS-401": "#fce4ec",
-  "TOC-401": "#e0f2f1",
-  "PCS-408": "#f1f8e9",
-  "PCS-403": "#e8eaf6",
-  "PCS-409": "#fff8e1",
-  "DP900": "#efebe9",
-  "AI900": "#fafafa",
-  "NDE": "#eceff1",
-  "Elective": "#e1f5fe",
+
+const subjectColorPalette = [
+  "#dbeafe",
+  "#e0e7ff",
+  "#d1fae5",
+  "#fef3c7",
+  "#fce7f3",
+  "#ccfbf1",
+  "#f0fdfa",
+  "#ede9fe",
+  "#fef2f2",
+  "#f5f3ff",
+  "#f9fafb",
+  "#f1f5f9",
+  "#e0f2fe",
+];
+
+
+const getSubjectColor = (subject) => {
+  if (!subject) return "#f9fafb";
+  
+
+  if (subject.includes("Elective") || subject.toLowerCase().includes("elective")) {
+    return "#e0f2fe";
+  }
+  
+
+  let hash = 0;
+  for (let i = 0; i < subject.length; i++) {
+    hash = subject.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return subjectColorPalette[Math.abs(hash) % subjectColorPalette.length];
 };
 
 function AdminDashboard() {
@@ -306,8 +338,8 @@ function AdminDashboard() {
     return `${day}-${month}-${year}`;
   };
   const [date, setDate] = useState(formatDate(today));
-  const [course, setCourse] = useState("BTech");
-  const [semester, setSemester] = useState(4);
+  const [course, setCourse] = useState("");
+  const [semester, setSemester] = useState("");
   const [courses, setCourses] = useState([]);
   const [semesters, setSemesters] = useState([]);
   const [availableSections, setAvailableSections] = useState([]);
@@ -325,19 +357,21 @@ function AdminDashboard() {
   const [weekDates, setWeekDates] = useState({});
   const navigate = useNavigate();
   
-  // Collapsible menu state
+
   const [openTeachers, setOpenTeachers] = useState(false);
   const [openScheduling, setOpenScheduling] = useState(false);
   const [openClassrooms, setOpenClassrooms] = useState(false);
   const [openAnalytics, setOpenAnalytics] = useState(false);
+  const [openAcademicSetup, setOpenAcademicSetup] = useState(false);
   
-  // Download dialog state
+
   const [openDownloadDialog, setOpenDownloadDialog] = useState(false);
-  const [downloadType, setDownloadType] = useState("all"); // "all" or "specific"
-  const [downloadCourse, setDownloadCourse] = useState("BTech");
-  const [downloadSemester, setDownloadSemester] = useState(4);
+  const [downloadType, setDownloadType] = useState("all");
+  const [downloadCourse, setDownloadCourse] = useState("");
+  const [downloadSemester, setDownloadSemester] = useState("");
   const [downloadSection, setDownloadSection] = useState("");
   const timetableRef = useRef(null);
+
 
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const timeSlots = [
@@ -350,6 +384,9 @@ function AdminDashboard() {
     "14:00-15:00",
     "15:00-16:00",
   ];
+  
+
+  const [subjects, setSubjects] = useState([]);
 
   const parseDate = (dateStr) => {
     const [day, month, year] = dateStr.split("-");
@@ -357,6 +394,11 @@ function AdminDashboard() {
   };
 
   const calculateWeekDates = (startDateStr) => {
+
+    if (!startDateStr || typeof startDateStr !== 'string') {
+      return {};
+    }
+    
     const parts = startDateStr.split("-");
     let startDate;
     
@@ -414,7 +456,7 @@ function AdminDashboard() {
     return timeSlots.filter(slot => slotsWithContent.has(slot));
   };
 
-  // Load courses on mount
+
   useEffect(() => {
     const loadCourses = async () => {
       try {
@@ -427,7 +469,7 @@ function AdminDashboard() {
     loadCourses();
   }, []);
 
-  // Load semesters when course changes
+
   useEffect(() => {
     if (course) {
       const loadSemesters = async () => {
@@ -442,20 +484,80 @@ function AdminDashboard() {
     }
   }, [course]);
 
-  // Load sections when course changes
+
   useEffect(() => {
-    if (course) {
+    if (course && semester) {
       const loadSections = async () => {
         try {
-          const response = await axios.get(`${API_URL}/sections/${course}`);
-          setAvailableSections(response.data.sections || []);
+
+
+          const batchesResponse = await axios.get(`${API_URL}/batches`);
+          const batches = batchesResponse.data.batches || [];
+          
+
+
+          const matchingBatch = batches.find(b => 
+            b.batch_type === course && b.semester === parseInt(semester)
+          );
+          
+          if (matchingBatch) {
+
+            const sectionsResponse = await axios.get(`${API_URL}/batches/${matchingBatch.id}/sections`);
+            const sections = sectionsResponse.data.sections || [];
+
+            setAvailableSections(sections.map(s => s.section_letter));
+          } else {
+
+            setAvailableSections([]);
+          }
         } catch (error) {
           console.error("Error loading sections:", error);
+          setAvailableSections([]);
         }
       };
       loadSections();
+    } else {
+
+      setAvailableSections([]);
     }
-  }, [course]);
+  }, [course, semester]);
+
+
+  const { data: timetableData, refetch: refetchTimetable } = useQuery({
+    queryKey: ['timetable', date, course, semester],
+    queryFn: async () => {
+      const backendDate = parseDate(date);
+      const response = await axios.get(`${API_URL}/timetable/${backendDate}`, { timeout: 60000 });
+      return response.data.timetable || {};
+    },
+    refetchInterval: 45000,
+    enabled: !!date,
+    staleTime: 20000,
+  });
+
+
+  const { data: availabilityData, refetch: refetchAvailability } = useQuery({
+    queryKey: ['teacher_availability'],
+    queryFn: async () => {
+      const response = await axios.get(`${API_URL}/teacher_availability`);
+      return response.data;
+    },
+    refetchInterval: 30000,
+    staleTime: 15000,
+  });
+
+
+  const { NotificationComponent: TimetableNotification } = useAutoRefresh(refetchTimetable, {
+    interval: 45000,
+    enabled: true,
+    showNotifications: true,
+  });
+
+  const { NotificationComponent: AvailabilityNotification } = useAutoRefresh(refetchAvailability, {
+    interval: 30000,
+    enabled: true,
+    showNotifications: false,
+  });
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -467,7 +569,9 @@ function AdminDashboard() {
         ]);
         setTimetable(timetableResponse.data.timetable || {});
         setEndDate(formatDate(new Date(timetableResponse.data.end_date)));
-        setWeekDates(calculateWeekDates(timetableResponse.data.date));
+        if (timetableResponse.data.date) {
+          setWeekDates(calculateWeekDates(timetableResponse.data.date));
+        }
         if (Object.keys(timetableResponse.data.timetable || {}).length > 0) {
           setSelectedSection(Object.keys(timetableResponse.data.timetable)[0]);
         }
@@ -490,7 +594,9 @@ function AdminDashboard() {
       const response = await axios.get(`${API_URL}/timetable/${backendDate}`);
       setTimetable(response.data.timetable || {});
       setEndDate(formatDate(new Date(response.data.end_date)));
-      setWeekDates(calculateWeekDates(response.data.date));
+      if (response.data.date) {
+        setWeekDates(calculateWeekDates(response.data.date));
+      }
       if (Object.keys(response.data.timetable || {}).length > 0) {
         setSelectedSection(Object.keys(response.data.timetable)[0]);
       }
@@ -506,32 +612,96 @@ function AdminDashboard() {
 
   const generateTimetable = async () => {
     setLoading(true);
-    setMessage(`Generating timetable for ${course} Semester ${semester}...`);
+    setMessage(`Starting background generation...`);
+    
     try {
       const backendDate = parseDate(date);
-      const response = await axios.get(
-        `${API_URL}/generate?date=${backendDate}&course=${course}&semester=${semester}`, 
-        { timeout: 120000 }
+      
+
+      const startResponse = await axios.get(
+        `${API_URL}/generate?date=${backendDate}&course=${course}&semester=${semester}&async_mode=true`
       );
       
-      if (response.data.error) {
-        setMessage(`Error: ${response.data.error}`);
+      if (startResponse.data.error) {
+        setMessage(`Error: ${startResponse.data.error}`);
+        setLoading(false);
         return;
       }
       
-      setTimetable(response.data.timetable || {});
-      setEndDate(formatDate(new Date(response.data.end_date)));
-      setDate(formatDate(new Date(response.data.date)));
-      setWeekDates(calculateWeekDates(response.data.date));
-      if (Object.keys(response.data.timetable || {}).length > 0) {
-        setSelectedSection(Object.keys(response.data.timetable)[0]);
+      const taskId = startResponse.data.task_id;
+      setMessage(`Task started (ID: ${taskId.substring(0, 8)}...)`);
+      
+
+      let pollCount = 0;
+      const maxPolls = 300;
+      
+      const pollStatus = async () => {
+        try {
+          const statusResponse = await axios.get(`${API_URL}/task/${taskId}`);
+          const task = statusResponse.data;
+          
+
+          setMessage(`${task.message} (${task.progress}%)`);
+          
+
+          if (task.status === "completed") {
+            setTimetable(task.result.timetable || {});
+            setEndDate(formatDate(new Date(task.result.end_date)));
+            setDate(formatDate(new Date(task.result.date)));
+            if (task.result.date) {
+              setWeekDates(calculateWeekDates(task.result.date));
+            }
+            if (Object.keys(task.result.timetable || {}).length > 0) {
+              setSelectedSection(Object.keys(task.result.timetable)[0]);
       }
-      setMessage(`Timetable generated successfully for ${course} Semester ${semester}!`);
-      setRefreshTrigger((prev) => prev + 1);
+            setMessage(`Timetable generated successfully for ${course} Semester ${semester}!`);
+            setRefreshTrigger((prev) => prev + 1);
+            setLoading(false);
+            return;
+          }
+          
+
+          if (task.status === "failed") {
+            setMessage(`Error: ${task.error || task.message}`);
+            setLoading(false);
+            return;
+          }
+          
+
+          if (task.status === "running") {
+
+            pollCount++;
+            if (pollCount >= maxPolls) {
+              setMessage("Timeout: Timetable generation taking too long");
+              setLoading(false);
+              return;
+            }
+            
+
+            setTimeout(pollStatus, 2000);
+          }
+          
+        } catch (error) {
+          console.error("Polling error:", error);
+          pollCount++;
+          
+          if (pollCount >= maxPolls) {
+            setMessage("Error polling task status: Timeout");
+            setLoading(false);
+            return;
+          }
+          
+
+          setTimeout(pollStatus, 2000);
+        }
+      };
+      
+
+      setTimeout(pollStatus, 1000);
+      
     } catch (error) {
-      setMessage("Error generating timetable: " + (error.response?.data?.error || error.message));
-      console.error("Generate error:", error);
-    } finally {
+      setMessage("Error starting timetable generation: " + (error.response?.data?.error || error.message));
+      console.error("Start error:", error);
       setLoading(false);
     }
   };
@@ -559,40 +729,46 @@ function AdminDashboard() {
     try {
       setMessage(`Generating PDF for Section ${sectionToDownload}...`);
       
-      // Create a temporary container for the specific section
+
       const tempContainer = document.createElement('div');
       tempContainer.style.position = 'absolute';
       tempContainer.style.left = '-9999px';
       document.body.appendChild(tempContainer);
       
-      // Render the timetable for this section
+
+
+
+
       tempContainer.innerHTML = `
-        <div style="padding: 20px; background: white;">
-          <div style="padding: 20px; background: #2c3e50; color: white; text-align: center; margin-bottom: 10px;">
-            <h2 style="margin: 0;">${course} - Semester ${semester} - Section ${sectionToDownload}</h2>
-            <p style="margin: 5px 0 0 0;">${date} to ${endDate}</p>
+        <div style="padding: 30px; background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          <div style="padding: 24px 32px; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); border-left: 4px solid #3b82f6; border-bottom: 1px solid #e2e8f0; margin-bottom: 20px; text-align: center;">
+            <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #1e293b;">${course} - Semester ${semester} - Section ${sectionToDownload}</h2>
+            <p style="margin: 8px 0 0 0; font-size: 14px; color: #64748b; font-weight: 500;">${date} to ${endDate}</p>
           </div>
-          <table style="width: 100%; border-collapse: collapse;">
+          <table style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
             <thead>
               <tr>
-                <th style="border: 1px solid #ddd; padding: 10px; background: #2c3e50; color: white;">Time</th>
-                ${days.map(day => `<th style="border: 1px solid #ddd; padding: 10px; background: #2c3e50; color: white;">${day}</th>`).join('')}
+                <th style="border: 1px solid #e2e8f0; padding: 14px 16px; background: #f8fafc; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px;">Time</th>
+                ${days.map((day, idx) => `<th style="border: 1px solid #e2e8f0; padding: 14px 16px; background: #f8fafc; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px;">${day}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
-              ${getActiveTimeSlotsForSection(sectionToDownload).map(timeSlot => `
-                <tr>
-                  <td style="border: 1px solid #ddd; padding: 10px; background: #f5f5f5; font-weight: 600;">${timeSlot}</td>
+              ${getActiveTimeSlotsForSection(sectionToDownload).map((timeSlot, idx) => `
+                <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                  <td style="border: 1px solid #e2e8f0; padding: 16px; background: #f8fafc; font-weight: 600; color: #2c3e50; text-align: center;">${timeSlot}</td>
                   ${days.map(day => {
                     const content = timetable[sectionToDownload]?.[day]?.[timeSlot];
-                    if (!content) return '<td style="border: 1px solid #ddd; padding: 10px;">—</td>';
+                    if (!content) return '<td style="border: 1px solid #e2e8f0; padding: 16px;"></td>';
                     if (content.subject === "Lunch") {
-                      return '<td style="border: 1px solid #ddd; padding: 10px; background: #fff3cd; text-align: center;">🍽️ Lunch</td>';
+                      return '<td style="border: 1px solid #e2e8f0; padding: 12px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; text-align: center; font-weight: 600; color: #856404;">LUNCH BREAK</td>';
                     }
-                    return `<td style="border: 1px solid #ddd; padding: 10px; text-align: center;">
-                      <div style="font-weight: 600; margin-bottom: 4px;">${content.subject || ''}</div>
-                      <div style="font-size: 0.85em; color: #666; font-style: italic;">${content.teacher || ''}</div>
-                      ${content.room ? `<div style="font-size: 0.75em; color: #2c3e50; font-weight: 600;">📍 ${content.room}</div>` : ''}
+                    const bgColor = getSubjectColor(content.subject);
+                    return `<td style="border: 1px solid #e2e8f0; padding: 12px; text-align: center; vertical-align: middle;">
+                      <div style="background: ${bgColor}; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(226, 232, 240, 0.8); min-height: 60px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        <div style="font-weight: 700; font-size: 14px; color: #2c3e50; margin-bottom: 4px;">${content.subject || ''}</div>
+                        <div style="font-size: 11px; color: #546e7a; font-style: italic;">${content.teacher === "respective teacher" ? "Elective Faculty" : content.teacher || "TBA"}</div>
+                        ${content.room ? `<div style="font-size: 10px; color: #ef4444; font-weight: 600; margin-top: 4px;">📍 ${content.room}</div>` : ''}
+                      </div>
                     </td>`;
                   }).join('')}
                 </tr>
@@ -603,30 +779,41 @@ function AdminDashboard() {
       `;
 
       const canvas = await html2canvas(tempContainer, {
-        scale: 2,
+        scale: 3,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#f8fafc',
+        windowWidth: 1200,
+        windowHeight: 1600,
+        allowTaint: false,
+        removeContainer: true,
       });
 
       document.body.removeChild(tempContainer);
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
-        format: 'a4'
+        format: 'a4',
+        compress: true
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgX = (pdfWidth - imgWidth * ratio) / 2;
-      const imgY = 10;
+      
 
-      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+      const margin = 10;
+      const maxWidth = pdfWidth - (2 * margin);
+      const maxHeight = pdfHeight - (2 * margin);
+      const ratio = Math.min(maxWidth / (imgWidth / 3.78), maxHeight / (imgHeight / 3.78));
+      
+      const imgX = (pdfWidth - (imgWidth / 3.78 * ratio)) / 2;
+      const imgY = margin;
+
+      pdf.addImage(imgData, 'PNG', imgX, imgY, (imgWidth / 3.78) * ratio, (imgHeight / 3.78) * ratio, undefined, 'FAST');
       pdf.save(`Timetable_${course}_Sem${semester}_Section${sectionToDownload}_${date}.pdf`);
       
       setMessage(`✅ PDF downloaded for Section ${sectionToDownload}`);
@@ -647,7 +834,7 @@ function AdminDashboard() {
     
     for (let i = 0; i < sections.length; i++) {
       await downloadSpecificTimetable(sections[i]);
-      // Small delay between downloads
+
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
@@ -714,7 +901,7 @@ function AdminDashboard() {
     setDrawerOpen(open);
   };
 
-  // Organized menu structure
+
   const menuStructure = [
     {
       category: "Teachers",
@@ -749,6 +936,15 @@ function AdminDashboard() {
       ]
     },
     {
+      category: "Academic Setup",
+      icon: <SchoolIcon />,
+      open: openAcademicSetup,
+      setOpen: setOpenAcademicSetup,
+      items: [
+        { text: "Batch Management", icon: <SchoolIcon />, path: "/batch-management", description: "Manage batches, sections, subjects, and electives" },
+      ]
+    },
+    {
       category: "Analytics & Reports",
       icon: <InsightsIcon />,
       open: openAnalytics,
@@ -759,8 +955,22 @@ function AdminDashboard() {
     }
   ];
 
+
+  useEffect(() => {
+    if (timetableData) {
+      setTimetable(timetableData);
+    }
+  }, [timetableData]);
+
+  useEffect(() => {
+    if (availabilityData) {
+      setTeacherAvailability(availabilityData);
+    }
+  }, [availabilityData]);
+
   return (
     <StyledContainer maxWidth="xl">
+      {TimetableNotification}
       <HeaderSection>
         <Grid container alignItems="center" justifyContent="space-between">
           <Grid item>
@@ -918,7 +1128,11 @@ function AdminDashboard() {
                   value={course}
                   onChange={(e) => setCourse(e.target.value)}
                   label="Course"
+                  displayEmpty
                 >
+                  <MenuItem value="">
+                    <em>Select Course</em>
+                  </MenuItem>
                   {courses.map((c) => (
                     <MenuItem key={c} value={c}>{c}</MenuItem>
                   ))}
@@ -932,7 +1146,12 @@ function AdminDashboard() {
                   value={semester}
                   onChange={(e) => setSemester(e.target.value)}
                   label="Semester"
+                  disabled={!course}
+                  displayEmpty
                 >
+                  <MenuItem value="">
+                    <em>Select Semester</em>
+                  </MenuItem>
                   {semesters.map((sem) => (
                     <MenuItem key={sem} value={sem}>Sem {sem}</MenuItem>
                   ))}
@@ -1025,14 +1244,61 @@ function AdminDashboard() {
       </ControlsCard>
 
       {message && (
-        <Alert
-          severity={message.includes("Error") ? "error" : "success"}
-          sx={{ mb: 2, borderRadius: "8px" }}
-          onClose={() => setMessage("")}
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 20,
+            right: 20,
+            zIndex: 9999,
+            minWidth: '300px',
+            maxWidth: '400px',
+            backgroundColor: message.includes("Error") ? '#fee' : '#efe',
+            color: message.includes("Error") ? '#c33' : '#2c3e50',
+            padding: '16px 20px',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            borderLeft: `4px solid ${message.includes("Error") ? '#e74c3c' : '#27ae60'}`,
+            animation: 'slideIn 0.3s ease-out'
+          }}
         >
-          {message}
-        </Alert>
+          {message.includes("Error") ? (
+            <Box sx={{ fontSize: '24px' }}>⚠️</Box>
+          ) : (
+            <Box sx={{ fontSize: '24px' }}>✅</Box>
+          )}
+          <Box sx={{ flex: 1, fontSize: '14px', fontWeight: 500 }}>
+            {message}
+          </Box>
+          <IconButton 
+            size="small" 
+            onClick={() => setMessage("")}
+            sx={{ 
+              color: 'inherit',
+              '&:hover': { backgroundColor: 'rgba(0,0,0,0.05)' }
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
       )}
+      
+      <style>
+        {`
+          @keyframes slideIn {
+            from {
+              transform: translateX(100%);
+              opacity: 0;
+            }
+            to {
+              transform: translateX(0);
+              opacity: 1;
+            }
+          }
+        `}
+      </style>
 
       {!timetable ? (
         <Paper sx={{ p: 8, textAlign: "center", borderRadius: "8px" }}>
@@ -1063,20 +1329,46 @@ function AdminDashboard() {
                     onChange={(e) => setSelectedSection(e.target.value)}
                     label="Select Section"
                   >
-                    {Object.keys(timetable).map((sec) => (
-                      <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
-                    ))}
+                    {availableSections.length > 0 
+                      ? availableSections.map((sec) => (
+                          <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
+                        ))
+                      : Object.keys(timetable || {}).map((sec) => (
+                          <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
+                        ))
+                    }
                   </Select>
                 </FormControl>
               </Box>
 
               {selectedSection && timetable[selectedSection] && (
                 <TimetableContainer>
-                  <Box sx={{ p: 2, backgroundColor: "#2c3e50", color: "#fff" }}>
-                    <Typography variant="h5" sx={{ fontWeight: 600, textAlign: "center" }}>
+                  <Box sx={{ 
+                    p: 3, 
+                    background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)",
+                    borderLeft: "4px solid #3b82f6",
+                    borderBottom: "1px solid #e2e8f0"
+                  }}>
+                    <Typography 
+                      variant="h5" 
+                      sx={{ 
+                        fontWeight: 700, 
+                        textAlign: "center",
+                        color: "#1e293b",
+                        mb: 0.5
+                      }}
+                    >
                       {course} - Semester {semester} - Section {selectedSection}
                     </Typography>
-                    <Typography variant="body2" sx={{ textAlign: "center", opacity: 0.8, mt: 0.5 }}>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        textAlign: "center", 
+                        color: "#64748b",
+                        mt: 0.5,
+                        fontWeight: 500
+                      }}
+                    >
                       {date} to {endDate}
                     </Typography>
                   </Box>
@@ -1122,7 +1414,7 @@ function AdminDashboard() {
                               return (
                                 <ClassCell key={`${day}-${timeSlot}`}>
                                   {slotContent && slotContent.subject !== "Lunch" ? (
-                                    <SubjectBox bgColor={subjectColors[slotContent.subject]}>
+                                    <SubjectBox bgColor={getSubjectColor(slotContent.subject)}>
                                       <SubjectCode>{slotContent.subject}</SubjectCode>
                                       <TeacherName>
                                         {slotContent.teacher === "respective teacher" 
@@ -1137,7 +1429,7 @@ function AdminDashboard() {
                                       )}
                                     </SubjectBox>
                                   ) : (
-                                    <EmptySlot>–</EmptySlot>
+                                    <EmptySlot></EmptySlot>
                                   )}
                                 </ClassCell>
                               );
@@ -1155,21 +1447,26 @@ function AdminDashboard() {
                           Subject Codes:
                         </Typography>
                       </Grid>
-                      {Object.entries(subjectColors).filter(([subject]) => subject !== "Lunch").map(([subject, color]) => (
-                        <Grid item key={subject}>
-                          <Chip
-                            label={subject}
-                            size="small"
-                            sx={{
-                              backgroundColor: color,
-                              color: "#2c3e50",
-                              fontWeight: 600,
-                              fontSize: "0.75rem",
-                              border: "1px solid #e0e0e0",
-                            }}
-                          />
-                        </Grid>
-                      ))}
+                      {Object.values(timetable || {})
+                        .flatMap(sectionData => Object.values(sectionData || {}))
+                        .flatMap(dayData => Object.values(dayData || {}))
+                        .map(slot => slot?.subject)
+                        .filter((subject, index, self) => subject && subject !== "Lunch" && self.indexOf(subject) === index)
+                        .map(subject => (
+                          <Grid item key={subject}>
+                            <Chip
+                              label={subject}
+                              size="small"
+                              sx={{
+                                backgroundColor: getSubjectColor(subject),
+                                color: "#2c3e50",
+                                fontWeight: 600,
+                                fontSize: "0.75rem",
+                                border: "1px solid #e0e0e0",
+                              }}
+                            />
+                          </Grid>
+                        ))}
                     </Grid>
                   </Box>
                 </TimetableContainer>
@@ -1232,13 +1529,15 @@ function AdminDashboard() {
                                 }
                                 return (
                                   <ClassCell key={`${day}-${timeSlot}`}>
-                                    {slotContent && slotContent.subject !== "Lunch" ? (
-                                      <SubjectBox bgColor={subjectColors[slotContent.subject]}>
+                                    {slotContent && slotContent.subject !== "Lunch" && 
+                                     slotContent.teacher && 
+                                     slotContent.teacher !== "respective teacher" &&
+                                     slotContent.teacher !== "Elective Faculty" &&
+                                     slotContent.teacher.trim() !== "" ? (
+                                      <SubjectBox bgColor={getSubjectColor(slotContent.subject)}>
                                         <SubjectCode>{slotContent.subject}</SubjectCode>
                                         <TeacherName>
-                                          {slotContent.teacher === "respective teacher"
-                                            ? "Elective Faculty"
-                                            : slotContent.teacher || "TBA"}
+                                          {slotContent.teacher}
                                         </TeacherName>
                                         {slotContent.room && (
                                           <RoomNumber>
@@ -1248,7 +1547,7 @@ function AdminDashboard() {
                                         )}
                                       </SubjectBox>
                                     ) : (
-                                      <EmptySlot>–</EmptySlot>
+                                      <EmptySlot></EmptySlot>
                                     )}
                                   </ClassCell>
                                 );
@@ -1278,13 +1577,12 @@ function AdminDashboard() {
                   onChange={(e) => setEditSubjects(e.target.value)}
                   label="Subjects Taught"
                 >
-                  {SUBJECTS.flatMap((subject) =>
-                    SECTIONS.map((section) => (
-                      <MenuItem key={`${subject}-${section}`} value={`${subject} (${section})`}>
-                        {`${subject} (${section})`}
-                      </MenuItem>
-                    ))
-                  )}
+                  {/* Options will be loaded dynamically from database */}
+                  {availableSections.map(section => (
+                    <MenuItem key={section} value={section}>
+                      {section}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </DialogContent>
@@ -1368,9 +1666,14 @@ function AdminDashboard() {
                         onChange={(e) => setDownloadSection(e.target.value)}
                         label="Select Section"
                       >
-                        {timetable && Object.keys(timetable).map((sec) => (
-                          <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
-                        ))}
+                        {availableSections.length > 0 
+                          ? availableSections.map((sec) => (
+                              <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
+                            ))
+                          : timetable && Object.keys(timetable).map((sec) => (
+                              <MenuItem key={sec} value={sec}>Section {sec}</MenuItem>
+                            ))
+                        }
                       </Select>
                     </FormControl>
                   </Box>

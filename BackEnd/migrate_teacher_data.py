@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Migration script to add new columns to teacher_data table.
 Run this script to update the database schema.
@@ -15,22 +15,22 @@ def migrate_database():
     
     try:
         with engine.connect() as conn:
-            # Check and add each column if it doesn't exist
+
             columns_to_add = [
                 ("earliest_time", "TEXT"),
                 ("latest_time", "TEXT"),
-                ("preferred_days", "TEXT"),  # JSON stored as TEXT
-                ("preferred_slots", "TEXT"),  # JSON stored as TEXT
-                ("unavailable_days", "TEXT")  # JSON stored as TEXT
+                ("preferred_days", "TEXT"),
+                ("preferred_slots", "TEXT"),
+                ("unavailable_days", "TEXT")
             ]
             
             for col_name, col_type in columns_to_add:
                 try:
-                    # Check if column exists by attempting to query it
+
                     conn.execute(text(f"SELECT {col_name} FROM teacher_data LIMIT 1"))
                     print(f"Column {col_name} already exists, skipping...")
                 except Exception:
-                    # Column doesn't exist, add it
+
                     print(f"Adding column {col_name}...")
                     conn.execute(text(f"ALTER TABLE teacher_data ADD COLUMN {col_name} {col_type}"))
                     conn.commit()

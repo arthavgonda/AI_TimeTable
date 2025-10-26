@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { useQuery } from "@tanstack/react-query";
+import useAutoRefresh from "./hooks/useAutoRefresh";
 import {
   Container,
   Typography,
@@ -14,14 +16,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Chip,
   Box,
   Paper,
-  Alert,
   IconButton,
   Checkbox,
   FormControlLabel,
@@ -33,50 +30,14 @@ import { styled } from "@mui/system";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import SearchIcon from "@mui/icons-material/Search";
+import PersonIcon from "@mui/icons-material/Person";
+import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from "react-router-dom";
 
 const API_URL = "http://localhost:8000";
 
-const COURSES = ["BTech", "MCA", "MBA", "BCA"];
-const SEMESTERS = {
-  "BTech": [1, 2, 3, 4, 5, 6, 7, 8],
-  "MCA": [1, 2, 3, 4],
-  "MBA": [1, 2, 3, 4],
-  "BCA": [1, 2, 3, 4, 5, 6]
-};
 
-const SUBJECTS_BY_SEMESTER = {
-  "BTech": {
-    1: ["TCS-101", "TCS-102", "PCS-101", "PCS-102"],
-    2: ["TCS-201", "TCS-202", "PCS-201", "PCS-202"],
-    3: ["TCS-301", "TCS-302", "TCS-303", "PCS-301", "PCS-302"],
-    4: ["TCS-408", "TCS-402", "TCS-403", "TCS-409", "XCS-401", "TOC-401", "PCS-408", "PCS-403", "PCS-409", "DP900", "AI900", "NDE", "Elective"],
-    5: ["TCS-501", "TCS-502", "TCS-503", "PCS-501", "PCS-502"],
-    6: ["TCS-601", "TCS-602", "TCS-603", "PCS-601", "PCS-602"],
-    7: ["TCS-701", "TCS-702", "PCS-701", "Elective"],
-    8: ["TCS-801", "TCS-802", "Project"]
-  },
-  "MCA": {
-    1: ["MCS-101", "MCS-102", "MCS-103"],
-    2: ["MCS-201", "MCS-202", "MCS-203"],
-    3: ["MCS-301", "MCS-302", "MCS-303"],
-    4: ["MCS-401", "Project"]
-  },
-  "MBA": {
-    1: ["MBS-101", "MBS-102", "MBS-103"],
-    2: ["MBS-201", "MBS-202", "MBS-203"],
-    3: ["MBS-301", "MBS-302", "MBS-303"],
-    4: ["MBS-401", "Project"]
-  },
-  "BCA": {
-    1: ["BCS-101", "BCS-102", "BCS-103"],
-    2: ["BCS-201", "BCS-202", "BCS-203"],
-    3: ["BCS-301", "BCS-302", "BCS-303"],
-    4: ["BCS-401", "BCS-402", "BCS-403"],
-    5: ["BCS-501", "BCS-502", "BCS-503"],
-    6: ["BCS-601", "Project"]
-  }
-};
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -101,15 +62,40 @@ const StyledButton = styled(Button)(({ theme }) => ({
 
 const StyledTable = styled(Table)(({ theme }) => ({
   "& .MuiTableHead-root": {
-    backgroundColor: "#e3f2fd",
+    backgroundColor: "#f8fafc",
+    borderBottom: "2px solid #e2e8f0",
   },
   "& .MuiTableRow-root:nth-of-type(odd)": {
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#ffffff",
+  },
+  "& .MuiTableRow-root:nth-of-type(even)": {
+    backgroundColor: "#f8fafc",
+  },
+  "& .MuiTableRow-root:hover": {
+    backgroundColor: "#f1f5f9 !important",
+    cursor: "pointer",
+    transition: "background-color 0.2s ease",
+  },
+  "& .MuiTableCell-root": {
+    padding: "16px 12px",
+    borderBottom: "1px solid #e2e8f0",
+  },
+  "& .MuiTableCell-head": {
+    fontWeight: 600,
+    fontSize: "13px",
+    color: "#1e293b",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    borderBottom: "2px solid #e2e8f0",
   },
 }));
 
 function TeacherManagementPage() {
   const [teachers, setTeachers] = useState([]);
+  const [filteredTeachers, setFilteredTeachers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [courses, setCourses] = useState([]);
+  const [subjectsByCourse, setSubjectsByCourse] = useState({});
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
@@ -117,31 +103,114 @@ function TeacherManagementPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Form states for adding/editing teacher
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     courses: [],
-    courseSubjects: {} // { "BTech": { "4": ["TCS-408", "PCS-408"] } }
+    courseSubjects: {}
   });
 
+
+  const { data: teachersData, isLoading, refetch } = useQuery({
+    queryKey: ['teachers'],
+    queryFn: async () => {
+      const response = await axios.get(`${API_URL}/teachers`);
+      return response.data.teachers || [];
+    },
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
+    staleTime: 10000,
+  });
+
+
+  const { NotificationComponent } = useAutoRefresh(refetch, {
+    interval: 30000,
+    enabled: true,
+    showNotifications: true,
+  });
+
+
   useEffect(() => {
-    fetchTeachers();
+    const fetchCoursesAndSubjects = async () => {
+      try {
+
+        const batchesResponse = await axios.get(`${API_URL}/batches`);
+        const batches = batchesResponse.data.batches || [];
+        
+
+        const uniqueCourses = [...new Set(batches.map(b => b.batch_type))];
+        setCourses(uniqueCourses);
+        
+
+        const subjectsMap = {};
+        for (const batch of batches) {
+          if (!subjectsMap[batch.batch_type]) {
+            subjectsMap[batch.batch_type] = {};
+          }
+          
+
+          try {
+            const subjectsResponse = await axios.get(`${API_URL}/batches/${batch.id}/subjects`);
+            const subjects = subjectsResponse.data.subjects || [];
+            subjectsMap[batch.batch_type][batch.semester] = subjects.map(s => s.code);
+          } catch (err) {
+            console.error(`Error fetching subjects for batch ${batch.id}:`, err);
+          }
+        }
+        
+        setSubjectsByCourse(subjectsMap);
+      } catch (error) {
+        console.error("Error fetching courses and subjects:", error);
+      }
+    };
+    
+    fetchCoursesAndSubjects();
   }, []);
+  
+
+  useEffect(() => {
+    if (teachersData) {
+      setTeachers(teachersData);
+      setFilteredTeachers(teachersData);
+      if (!isLoading) {
+        setMessage("Teachers loaded successfully!");
+      }
+    }
+  }, [teachersData, isLoading]);
+
 
   const fetchTeachers = async () => {
     setLoading(true);
     try {
       const response = await axios.get(`${API_URL}/teachers`);
-      setTeachers(response.data.teachers || []);
+      const teachersList = response.data.teachers || [];
+      setTeachers(teachersList);
+      setFilteredTeachers(teachersList);
       setMessage("Teachers loaded successfully!");
+      refetch();
     } catch (error) {
       setMessage("Error loading teachers: " + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
   };
+
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredTeachers(teachers);
+    } else {
+      const query = searchQuery.toLowerCase().trim();
+      const filtered = teachers.filter(teacher =>
+        teacher.name.toLowerCase().includes(query) ||
+        (teacher.email && teacher.email.toLowerCase().includes(query)) ||
+        (teacher.phone && teacher.phone.toLowerCase().includes(query))
+      );
+      setFilteredTeachers(filtered);
+    }
+  }, [searchQuery, teachers]);
 
   const handleAddTeacher = async () => {
     setLoading(true);
@@ -250,11 +319,42 @@ function TeacherManagementPage() {
 
   return (
     <StyledContainer>
+      {NotificationComponent}
       <StyledPaper>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4" sx={{ fontWeight: "bold", color: "#1e88e5" }}>
-            Teacher Management
-          </Typography>
+        <Box 
+          display="flex" 
+          justifyContent="space-between" 
+          alignItems="center" 
+          mb={3}
+          sx={{
+            backgroundColor: "#f8fafc",
+            padding: "20px 24px",
+            borderRadius: "12px",
+            borderLeft: "4px solid #3b82f6",
+          }}
+        >
+          <Box>
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                fontWeight: 700, 
+                color: "#1e293b",
+                fontSize: "28px",
+                mb: 0.5
+              }}
+            >
+              Teacher Management
+            </Typography>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: "#64748b",
+                fontSize: "14px"
+              }}
+            >
+              Manage and organize your teaching staff
+            </Typography>
+          </Box>
           <Box>
             <StyledButton
               variant="contained"
@@ -274,14 +374,108 @@ function TeacherManagementPage() {
         </Box>
 
         {message && (
-          <Alert
-            severity={message.includes("Error") ? "error" : "success"}
-            sx={{ marginBottom: 2, borderRadius: "8px" }}
-            onClose={() => setMessage("")}
+          <Box
+            sx={{
+              position: 'fixed',
+              top: 20,
+              right: 20,
+              zIndex: 9999,
+              minWidth: '300px',
+              maxWidth: '400px',
+              backgroundColor: message.includes("Error") ? '#fee' : '#efe',
+              color: message.includes("Error") ? '#c33' : '#2c3e50',
+              padding: '16px 20px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              borderLeft: `4px solid ${message.includes("Error") ? '#e74c3c' : '#27ae60'}`,
+              animation: 'slideIn 0.3s ease-out',
+              mb: 2
+            }}
           >
-            {message}
-          </Alert>
+            {message.includes("Error") ? (
+              <Box sx={{ fontSize: '24px' }}></Box>
+            ) : (
+              <Box sx={{ fontSize: '24px' }}></Box>
+            )}
+            <Box sx={{ flex: 1, fontSize: '14px', fontWeight: 500 }}>
+              {message}
+            </Box>
+            <IconButton 
+              size="small" 
+              onClick={() => setMessage("")}
+              sx={{ 
+                color: 'inherit',
+                '&:hover': { backgroundColor: 'rgba(0,0,0,0.05)' }
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
         )}
+        
+        <style>
+          {`
+            @keyframes slideIn {
+              from {
+                transform: translateX(100%);
+                opacity: 0;
+              }
+              to {
+                transform: translateX(0);
+                opacity: 1;
+              }
+            }
+          `}
+        </style>
+
+        {/* Search Bar */}
+        <Box sx={{ mb: 3 }}>
+          <TextField
+            fullWidth
+            placeholder="Search teachers by name, email, or phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: "10px",
+                backgroundColor: "#ffffff",
+                border: "1px solid #e2e8f0",
+                "&:hover": {
+                  borderColor: "#cbd5e1",
+                },
+                "&.Mui-focused": {
+                  borderColor: "#3b82f6",
+                },
+              },
+            }}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: "#64748b" }} />,
+            }}
+          />
+          {searchQuery && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1.5 }}>
+              <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 500 }}>
+                Showing {filteredTeachers.length} of {teachers.length} teachers
+              </Typography>
+              <Chip 
+                label={searchQuery} 
+                size="small" 
+                onDelete={() => setSearchQuery("")}
+                sx={{ 
+                  height: "20px",
+                  backgroundColor: "#e0e7ff",
+                  color: "#4f46e5",
+                  "& .MuiChip-deleteIcon": {
+                    fontSize: "14px"
+                  }
+                }}
+              />
+            </Box>
+          )}
+        </Box>
 
         <StyledTable>
           <TableHead>
@@ -294,43 +488,120 @@ function TeacherManagementPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {teachers.map((teacher) => (
+            {filteredTeachers.length === 0 && teachers.length > 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} sx={{ textAlign: "center", py: 8 }}>
+                  <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                    <SearchIcon sx={{ fontSize: 48, color: "#cbd5e1" }} />
+                    <Typography variant="h6" sx={{ color: "#1e293b", fontWeight: 600 }}>
+                      No teachers found
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#64748b" }}>
+                      No teachers match "{searchQuery}"
+                    </Typography>
+                  </Box>
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredTeachers.map((teacher) => (
               <TableRow key={teacher.id}>
-                <TableCell>{teacher.name}</TableCell>
-                <TableCell>{teacher.email || "N/A"}</TableCell>
                 <TableCell>
-                  <Box display="flex" flexWrap="wrap" gap={0.5}>
-                    {(teacher.courses || []).map(course => (
-                      <Chip key={course} label={course} size="small" color="primary" />
-                    ))}
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                    <PersonIcon sx={{ fontSize: 20, color: "#64748b" }} />
+                    <Typography sx={{ fontWeight: 600, color: "#1e293b", fontSize: "15px" }}>
+                      {teacher.name}
+                    </Typography>
                   </Box>
                 </TableCell>
                 <TableCell>
+                  {teacher.email ? (
+                    <Typography sx={{ color: "#64748b" }}>{teacher.email}</Typography>
+                  ) : (
+                    <Typography sx={{ color: "#cbd5e1" }}>—</Typography>
+                  )}
+                </TableCell>
+                <TableCell>
                   <Box display="flex" flexWrap="wrap" gap={0.5}>
-                    {Object.entries(teacher.courseSubjects || {}).map(([course, semesters]) => 
-                      Object.entries(semesters).map(([sem, subjects]) => 
-                        subjects.map(subject => (
-                          <Chip 
-                            key={`${course}-${sem}-${subject}`}
-                            label={`${subject} (${course} Sem ${sem})`} 
-                            size="small" 
-                            sx={{ backgroundColor: "#e3f2fd" }}
-                          />
-                        ))
-                      )
+                    {(teacher.courses || []).length > 0 ? (
+                      (teacher.courses || []).map(course => (
+                        <Chip 
+                          key={course} 
+                          label={course} 
+                          size="small" 
+                          sx={{
+                            backgroundColor: "#dbeafe",
+                            color: "#1e40af",
+                            fontWeight: 500,
+                            height: "26px"
+                          }}
+                        />
+                      ))
+                    ) : (
+                      <Typography sx={{ color: "#cbd5e1" }}>—</Typography>
                     )}
                   </Box>
                 </TableCell>
                 <TableCell>
-                  <IconButton onClick={() => openEdit(teacher)} color="primary">
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleDeleteTeacher(teacher.id)} color="error">
-                    <DeleteIcon />
-                  </IconButton>
+                  <Box display="flex" flexWrap="wrap" gap={0.5}>
+                    {Object.entries(teacher.courseSubjects || {}).length > 0 ? (
+                      Object.entries(teacher.courseSubjects || {}).map(([course, semesters]) => 
+                        Object.entries(semesters).map(([sem, subjects]) => 
+                          subjects.map(subject => (
+                            <Chip 
+                              key={`${course}-${sem}-${subject}`}
+                              label={`${subject}`} 
+                              size="small"
+                              title={`${subject} (${course} Sem ${sem})`}
+                              sx={{ 
+                                backgroundColor: "#e0e7ff",
+                                color: "#4f46e5",
+                                fontWeight: 500,
+                                height: "26px"
+                              }}
+                            />
+                          ))
+                        )
+                      )
+                    ) : (
+                      <Typography sx={{ color: "#cbd5e1" }}>—</Typography>
+                    )}
+                  </Box>
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ display: "flex", gap: 0.5 }}>
+                    <IconButton 
+                      onClick={() => openEdit(teacher)} 
+                      sx={{
+                        color: "#3b82f6",
+                        "&:hover": {
+                          backgroundColor: "#dbeafe",
+                        }
+                      }}
+                      title="Edit teacher"
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton 
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete ${teacher.name}?`)) {
+                          handleDeleteTeacher(teacher.id);
+                        }
+                      }}
+                      sx={{
+                        color: "#ef4444",
+                        "&:hover": {
+                          backgroundColor: "#fee2e2",
+                        }
+                      }}
+                      title="Delete teacher"
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
                 </TableCell>
               </TableRow>
-            ))}
+            ))
+            )}
           </TableBody>
         </StyledTable>
       </StyledPaper>
@@ -371,7 +642,7 @@ function TeacherManagementPage() {
             <Grid item xs={12}>
               <Typography variant="h6" gutterBottom>Select Courses</Typography>
               <Box display="flex" flexWrap="wrap" gap={1}>
-                {COURSES.map(course => (
+                {courses.map(course => (
                   <FormControlLabel
                     key={course}
                     control={
@@ -391,13 +662,13 @@ function TeacherManagementPage() {
                 <Card>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>{course} - Select Subjects by Semester</Typography>
-                    {SEMESTERS[course].map(semester => (
+                    {subjectsByCourse[course] && Object.keys(subjectsByCourse[course]).sort((a, b) => parseInt(a) - parseInt(b)).map(semester => (
                       <Box key={semester} mb={2}>
                         <Typography variant="subtitle1" gutterBottom>
                           Semester {semester}
                         </Typography>
                         <Box display="flex" flexWrap="wrap" gap={1}>
-                          {(SUBJECTS_BY_SEMESTER[course][semester] || []).map(subject => (
+                          {(subjectsByCourse[course][semester] || []).map(subject => (
                             <FormControlLabel
                               key={subject}
                               control={
@@ -465,7 +736,7 @@ function TeacherManagementPage() {
             <Grid item xs={12}>
               <Typography variant="h6" gutterBottom>Select Courses</Typography>
               <Box display="flex" flexWrap="wrap" gap={1}>
-                {COURSES.map(course => (
+                {courses.map(course => (
                   <FormControlLabel
                     key={course}
                     control={
@@ -485,13 +756,13 @@ function TeacherManagementPage() {
                 <Card>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>{course} - Select Subjects by Semester</Typography>
-                    {SEMESTERS[course].map(semester => (
+                    {subjectsByCourse[course] && Object.keys(subjectsByCourse[course]).sort((a, b) => parseInt(a) - parseInt(b)).map(semester => (
                       <Box key={semester} mb={2}>
                         <Typography variant="subtitle1" gutterBottom>
                           Semester {semester}
                         </Typography>
                         <Box display="flex" flexWrap="wrap" gap={1}>
-                          {(SUBJECTS_BY_SEMESTER[course][semester] || []).map(subject => (
+                          {(subjectsByCourse[course][semester] || []).map(subject => (
                             <FormControlLabel
                               key={subject}
                               control={
